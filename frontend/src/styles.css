@@ -1,0 +1,87 @@
+* {
+  box-sizing: border-box;
+  font-family: Arial, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: #f4f6fb;
+  color: #1b1f2a;
+}
+
+.container {
+  max-width: 900px;
+  margin: 24px auto;
+  padding: 0 16px 32px;
+}
+
+h1 {
+  margin-bottom: 4px;
+}
+
+.sub {
+  margin-top: 0;
+  color: #4e576d;
+}
+
+.card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  margin: 14px 0;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  font-size: 14px;
+  gap: 6px;
+}
+
+input,
+select,
+textarea,
+button {
+  padding: 8px;
+  border: 1px solid #c7cede;
+  border-radius: 8px;
+}
+
+button {
+  cursor: pointer;
+  background: #2f6df5;
+  color: #fff;
+  border: none;
+  margin-top: 10px;
+}
+
+button:disabled {
+  background: #98b0ee;
+  cursor: not-allowed;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.result,
+.question {
+  background: #f8faff;
+  border-radius: 8px;
+  padding: 10px;
+  margin-top: 10px;
+}
+
+.error {
+  color: #d11a2a;
+  font-weight: bold;
+}
