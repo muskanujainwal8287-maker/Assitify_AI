@@ -25,7 +25,7 @@ ENV/
 # ---------- Secrets / local config ----------
 .env
 .env.*
-!.env.example
+example.env
 
 # ---------- Logs ----------
 *.log

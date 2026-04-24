@@ -1,7 +1,7 @@
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from app.schemas.generate import Question
+from ai_layer.schemas import Question
 
 
 @dataclass

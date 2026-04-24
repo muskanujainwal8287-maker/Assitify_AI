@@ -1,6 +1,6 @@
 from collections import defaultdict
 
-from app.schemas.test import AnswerReview, WeakTopic
+from ai_layer.schemas import AnswerReview, WeakTopic
 
 
 class EvaluationService:

@@ -2,7 +2,7 @@ import re
 import uuid
 from collections import Counter
 
-from app.schemas.generate import Question
+from ai_layer.schemas import Question
 
 
 class AIService:

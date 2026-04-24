@@ -87,3 +87,31 @@ Install the Tesseract OCR engine and ensure `tesseract` is available in your sys
 3. Generate questions from parsed text.
 4. Review user answers against expected answers.
 5. Return scores, weak topics, and next difficulty.
+
+## Doubt / Discussion Feature (V1)
+
+Add a simple doubt/discussion module so users can ask follow-up questions on generated outputs.
+
+### Scope
+
+- Raise a doubt for a session/result
+- Reply inside a doubt thread
+- Track status: `open` or `resolved`
+- List doubts and fetch a single thread
+
+### Suggested API Endpoints
+
+- `POST /api/discussion/threads`
+- `GET /api/discussion/threads`
+- `GET /api/discussion/threads/{thread_id}`
+- `POST /api/discussion/threads/{thread_id}/replies`
+- `PATCH /api/discussion/threads/{thread_id}/resolve`
+
+### Starter Backend Module
+
+A starter implementation is added at `backend/app/services/discussion.py` with:
+
+- in-memory thread and reply models
+- create/list/get thread helpers
+- add reply helper
+- mark-resolved helper

@@ -2,8 +2,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    app_name: str = "AI Exam Prep API"
-    app_version: str = "1.1.0"
+    app_name: str = "AI Layer API"
+    app_version: str = "1.0.0"
     upload_dir: str = "uploads"
     allow_origins: list[str] = ["*"]
 
