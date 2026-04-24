@@ -1,5 +1,7 @@
 # AI Exam Prep Platform
 
+## 🚧 Project Status: In Progress
+
 End-to-end project for exam preparation with 3 layers:
 
 - AI layer: summary + question generation + answer evaluation
