@@ -2,11 +2,17 @@
 
 This repository README describes the `ai_layer` only.
 
+## Python Version
+
+Use `Python 3.12.x` for this project.
+`PyMuPDF` may fail to install on Windows with `Python 3.14` because pip falls back to source build.
+
 The AI layer provides three core services:
 
 - document parsing (`PDF`, `DOCX`, `TXT`, and images)
 - summary and question generation
 - answer review, weak-topic detection, and difficulty recommendation
+- Doubt / discussion handling (AI logic only)
 
 ## Folder Structure
 
@@ -40,10 +46,12 @@ The AI layer provides three core services:
 
 ## Dependencies
 
-Install the Python dependencies used by the AI layer:
+Create and activate a virtual environment with Python 3.12, then install dependencies:
 
 ```bash
-pip install python-docx PyMuPDF Pillow pytesseract
+py -3.12 -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
 ```
 
 ### OCR Requirement

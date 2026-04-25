@@ -6,6 +6,8 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from ai_layer.config import settings
 from ai_layer.schemas import DocumentUploadResponse
 from ai_layer.schemas import (
+    DoubtRequest,
+    DoubtResponse,
     QuestionGenerationRequest,
     QuestionGenerationResponse,
     SummaryRequest,
@@ -92,3 +94,13 @@ def review_test(payload: TestReviewRequest) -> TestReviewResponse:
         weak_topics=weak_topics,
         recommended_difficulty=recommended_difficulty,
     )
+
+
+@router.post("/doubt", response_model=DoubtResponse)
+def resolve_doubt(payload: DoubtRequest) -> DoubtResponse:
+    document = store.documents.get(payload.document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    answer = AIService.answer_doubt(document.text, payload.question)
+    return DoubtResponse(document_id=payload.document_id, question=payload.question, answer=answer)

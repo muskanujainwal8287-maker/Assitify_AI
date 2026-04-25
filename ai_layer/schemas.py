@@ -74,3 +74,14 @@ class TestReviewResponse(BaseModel):
     reviews: list[AnswerReview]
     weak_topics: list[WeakTopic]
     recommended_difficulty: str
+
+
+class DoubtRequest(BaseModel):
+    document_id: str
+    question: str = Field(min_length=3, max_length=2000)
+
+
+class DoubtResponse(BaseModel):
+    document_id: str
+    question: str
+    answer: str
