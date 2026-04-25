@@ -1,48 +1,46 @@
 # AI Layer
 
-This repository README describes the `ai_layer` only.
+This README documents the current `ai_layer` implementation in this repository.
 
 ## Python Version
 
 Use `Python 3.12.x` for this project.
-`PyMuPDF` may fail to install on Windows with `Python 3.14` because pip falls back to source build.
+`PyMuPDF` may fail to install on Windows with `Python 3.14` because pip may fall back to source builds.
 
-The AI layer provides three core services:
+## What It Provides
 
-- document parsing (`PDF`, `DOCX`, `TXT`, and images)
-- summary and question generation
-- answer review, weak-topic detection, and difficulty recommendation
-- Doubt / discussion handling (AI logic only)
+The AI layer supports:
+
+- document upload and parsing (`PDF`, `DOCX`, `TXT`, image OCR)
+- chapter/chunk ingestion for phase-1 retrieval readiness
+- summary generation (`short`, `standard`, `detailed`)
+- key-point recommendation
+- objective/subjective question generation
+- answer review with weak-topic detection and next difficulty recommendation
+- doubt answering grounded in provided document/text
 
 ## Folder Structure
 
+- `ai_layer/main.py`
+  - FastAPI app setup and router registration.
+- `ai_layer/api_router.py`
+  - REST endpoints for upload, summary, keypoints, questions, review, doubt, chapters, and chunks.
 - `ai_layer/parser_service.py`
   - Parses supported file formats into plain text.
+- `ai_layer/ingestion_service.py`
+  - Splits documents into chapter-like segments and overlapping chunks.
 - `ai_layer/ai_service.py`
-  - Generates summaries and objective/subjective questions.
+  - LLM-backed summary, key-point, question, and doubt logic with local fallbacks.
 - `ai_layer/evaluation_service.py`
-  - Scores answers and returns feedback with weak-topic insights.
-- `ai_layer/__init__.py`
-  - Package exports.
-
-## Features
-
-- Parse documents from:
-  - `application/pdf` and `.pdf`
-  - `.docx` and `.doc`
-  - image files (`.png`, `.jpg`, `.jpeg`, `.webp`) via OCR
-  - plain text files
-- Generate summaries in three modes:
-  - `short`
-  - `standard`
-  - `detailed`
-- Generate:
-  - objective questions with options
-  - subjective questions with free-text expected answers
-- Review submitted answers:
-  - per-question score and feedback
-  - weak-topic list
-  - recommended next difficulty (`easy`, `medium`, `hard`)
+  - LLM-backed answer scoring/weak-topic analysis with heuristic fallback.
+- `ai_layer/storage.py`
+  - In-memory storage models (`StoredDocument`, chapters, chunks, generated questions).
+- `ai_layer/schemas.py`
+  - Request/response models used by API routes.
+- `ai_layer/config.py`
+  - Environment-backed settings (upload dir, OpenAI key, model, etc.).
+- `start.py`
+  - Convenience launcher for `uvicorn ai_layer.main:app --reload`.
 
 ## Dependencies
 
@@ -56,70 +54,90 @@ pip install -r requirements.txt
 
 ### OCR Requirement
 
-Install the Tesseract OCR engine and ensure `tesseract` is available in your system `PATH`.
+Install the Tesseract OCR engine and ensure `tesseract` is available in system `PATH`.
 
-## Service Overview
+## Configuration
+
+The app reads settings from environment variables (via `.env`):
+
+- `OPENAI_API_KEY` - enables LLM features.
+- `LLM_MODEL` - model passed to OpenAI responses API.
+- `UPLOAD_DIR` - upload storage directory (default: `uploads`).
+- `ALLOW_ORIGINS` - CORS origin list.
+
+If `OPENAI_API_KEY` is missing, services use local fallback logic where implemented.
+
+## API Endpoints
+
+All routes below are exposed from the AI router:
+
+- `POST /upload`
+  - Uploads a file, parses text, stores the document, and runs ingestion.
+- `POST /summary`
+  - Input: `document_id` or raw `text` + `mode`.
+  - Output: generated summary.
+- `POST /keypoints`
+  - Input: `document_id` or raw `text` + `count`.
+  - Output: recommended key points.
+- `POST /questions`
+  - Input: `document_id` or raw `text`, `question_type`, `difficulty`, `count`, optional `topic`.
+  - Output: generated question set.
+- `POST /review`
+  - Input: `document_id` + submitted answers.
+  - Output: per-question review, total score, weak topics, recommended difficulty.
+- `POST /doubt`
+  - Input: `document_id` or raw `text` + user `question`.
+  - Output: AI-generated doubt response.
+- `GET /documents/{document_id}/chapters`
+  - Output: chapter boundaries and chunk counts.
+- `GET /documents/{document_id}/chunks?chapter_id=<id>&limit=50`
+  - Output: chunk metadata and text preview (optionally filtered by chapter).
+
+## Request Pattern
+
+Most content-generation endpoints accept either:
+
+- a previously uploaded `document_id`, or
+- direct `text` input (min length `20`, max length `50000`).
+
+If direct text is provided, a temporary in-memory document is created and ingested.
+
+## Service Notes
 
 ### `ParserService`
 
-- `parse(file_path, content_type) -> (text, doc_type)`
-- Detects file type from content type or extension.
-- Routes parsing to:
-  - `_parse_pdf`
-  - `_parse_docx`
-  - `_parse_image`
-  - plain text reader fallback
+- Detects input type from MIME type/extension.
+- Supports:
+  - PDF via `fitz` (PyMuPDF)
+  - DOCX via `python-docx`
+  - image OCR via `Pillow` + `pytesseract`
+  - plain text fallback
+
+### `IngestionService`
+
+- Detects chapter-like headings using regex.
+- Creates `StoredChapter` entries with start/end character spans.
+- Builds overlapping chunks (`chunk_size=1200`, `overlap=200` by default).
 
 ### `AIService`
 
-- `summarize(text, mode) -> (summary, key_points)`
-  - sentence-based summary selection by mode
-  - key points from frequent terms
-- `generate_questions(text, question_type, difficulty, count, topic=None) -> list[Question]`
-  - supports `objective` and `subjective` generation
-  - attaches metadata (`id`, `difficulty`, `topic`)
+- Uses OpenAI Responses API when configured.
+- Includes fallback behavior for:
+  - summary generation
+  - key-point extraction
+  - question generation
+- Doubt answering currently requires OpenAI key for meaningful responses.
 
 ### `EvaluationService`
 
-- `review_answers(answers, expected) -> (reviews, total_score, weak_topics, recommended_difficulty)`
-- Internal behavior:
-  - token-overlap scoring
-  - correctness threshold at `0.6`
-  - weak-topic accuracy sorting
-  - difficulty recommendation from total score
+- Uses LLM scoring when available, otherwise token-overlap heuristic.
+- Correctness threshold is `0.6` score.
+- Computes weak-topic suggestions and recommended next difficulty (`easy`, `medium`, `hard`).
 
-## Typical AI Layer Flow
+## Typical Flow
 
-1. Parse uploaded file into text.
-2. Generate summary and key points.
-3. Generate questions from parsed text.
-4. Review user answers against expected answers.
-5. Return scores, weak topics, and next difficulty.
-
-## Doubt / Discussion Feature (V1)
-
-Add a simple doubt/discussion module so users can ask follow-up questions on generated outputs.
-
-### Scope
-
-- Raise a doubt for a session/result
-- Reply inside a doubt thread
-- Track status: `open` or `resolved`
-- List doubts and fetch a single thread
-
-### Suggested API Endpoints
-
-- `POST /api/discussion/threads`
-- `GET /api/discussion/threads`
-- `GET /api/discussion/threads/{thread_id}`
-- `POST /api/discussion/threads/{thread_id}/replies`
-- `PATCH /api/discussion/threads/{thread_id}/resolve`
-
-### Starter Backend Module
-
-A starter implementation is added at `backend/app/services/discussion.py` with:
-
-- in-memory thread and reply models
-- create/list/get thread helpers
-- add reply helper
-- mark-resolved helper
+1. Upload document via `/upload`.
+2. Use `document_id` for `/summary`, `/keypoints`, and `/questions`.
+3. Submit answers to `/review`.
+4. Use `/doubt` for targeted follow-up explanations.
+5. Inspect chapter/chunk structure via `/documents/{id}/chapters` and `/documents/{id}/chunks`.

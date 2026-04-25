@@ -39,7 +39,7 @@ class AIService:
         return None
 
     @staticmethod
-    def summarize(text: str, mode: str) -> tuple[str, list[str]]:
+    def summarize(text: str, mode: str) -> str:
         llm_result = AIService._summarize_with_llm(text=text, mode=mode)
         if llm_result:
             return llm_result
@@ -47,7 +47,7 @@ class AIService:
         # Fallback summary if OpenAI is unavailable or parsing fails.
         sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
         if not sentences:
-            return "No usable content was found in the document.", []
+            return "No usable content was found in the document."
 
         if mode == "short":
             selected = sentences[:2]
@@ -56,12 +56,10 @@ class AIService:
         else:
             selected = sentences[:4]
 
-        words = [w.lower() for w in re.findall(r"[a-zA-Z]{4,}", text)]
-        key_points = [term for term, _ in Counter(words).most_common(5)]
-        return " ".join(selected), key_points
+        return " ".join(selected)
 
     @staticmethod
-    def _summarize_with_llm(text: str, mode: str) -> tuple[str, list[str]] | None:
+    def _summarize_with_llm(text: str, mode: str) -> str | None:
         client = AIService._get_client()
         if client is None:
             return None
@@ -69,7 +67,7 @@ class AIService:
         target_length = {"short": "2-3 lines", "standard": "5-7 lines", "detailed": "10-14 lines"}.get(mode, "5-7 lines")
         prompt = (
             "You are an educational assistant.\n"
-            "Return strict JSON with keys: summary (string), key_points (array of 3-7 strings).\n"
+            "Return strict JSON with keys: summary (string)\n"
             f"Summary length target: {target_length}.\n"
             "Use only the provided content, avoid hallucinations.\n\n"
             f"Content:\n{text[:12000]}"
@@ -81,14 +79,49 @@ class AIService:
             if not parsed:
                 return None
             summary = str(parsed.get("summary", "")).strip()
-            key_points_raw = parsed.get("key_points", [])
-            if isinstance(key_points_raw, list):
-                key_points = [str(item).strip() for item in key_points_raw if str(item).strip()]
-            else:
-                key_points = []
             if summary:
-                return summary, key_points[:7]
+                return summary
             return None
+        except Exception:
+            return None
+
+    @staticmethod
+    def recommend_key_points(text: str, count: int = 5) -> list[str]:
+        llm_key_points = AIService._recommend_key_points_with_llm(text=text, count=count)
+        if llm_key_points:
+            return llm_key_points
+
+        words = [w.lower() for w in re.findall(r"[a-zA-Z]{4,}", text)]
+        return [term for term, _ in Counter(words).most_common(count)]
+
+    @staticmethod
+    def _recommend_key_points_with_llm(text: str, count: int = 5) -> list[str] | None:
+        client = AIService._get_client()
+        if client is None:
+            return None
+
+        prompt = (
+            "You recommend study key points from material.\n"
+            "Return strict JSON with key 'key_points' as an array of concise strings.\n"
+            f"Provide exactly {count} key points.\n"
+            "Use only the provided content, avoid hallucinations.\n\n"
+            f"Content:\n{text[:12000]}"
+        )
+        try:
+            response = client.responses.create(model=settings.llm_model, input=prompt)
+            output_text = getattr(response, "output_text", "") or ""
+            parsed = AIService._extract_json_from_text(output_text)
+            if not parsed:
+                return None
+
+            key_points_raw = parsed.get("key_points", [])
+            if not isinstance(key_points_raw, list):
+                return None
+
+            key_points = [str(item).strip() for item in key_points_raw if str(item).strip()]
+            if not key_points:
+                return None
+            return key_points[:count]
         except Exception:
             return None
 
@@ -219,6 +252,6 @@ class AIService:
         try:
             response = client.responses.create(model=settings.llm_model, input=prompt)
             output_text = (getattr(response, "output_text", "") or "").strip()
-            return output_text or "I could not generate a response right now."
+            return output_text or "I'am Sorry, Unable to find answer. Can you please Eleborate your Query. "
         except Exception:
-            return "I could not process the doubt with OpenAI right now. Please try again."
+            return "Something went wrong. Please try again later."

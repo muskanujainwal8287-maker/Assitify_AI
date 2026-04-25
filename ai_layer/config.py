@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     upload_dir: str = "uploads"
     allow_origins: list[str] = ["*"]
     openai_api_key: str = ""
-    llm_model: str = "gpt-4.1-mini"
+    llm_model: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
