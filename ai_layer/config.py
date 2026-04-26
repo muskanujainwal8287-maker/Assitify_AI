@@ -8,8 +8,13 @@ class Settings(BaseSettings):
     allow_origins: list[str] = ["*"]
     openai_api_key: str = ""
     llm_model: str = ""
+    database_url: str = ""
+    redis_url: str = ""
+    qdrant_url: str = ""
+    qdrant_api_key: str = ""
+    embed_model: str = "text-embedding-3-small"
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 
 settings = Settings()

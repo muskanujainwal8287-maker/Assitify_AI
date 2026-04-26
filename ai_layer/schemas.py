@@ -1,3 +1,4 @@
+
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -8,26 +9,19 @@ class DocumentUploadResponse(BaseModel):
     extracted_text_preview: str
 
 
-class DocumentOrTextRequest(BaseModel):
-    document_id: str | None = None
-    text: str | None = Field(default=None, min_length=20, max_length=50000)
+class DocumentRequest(BaseModel):
+    document_id: str
 
     @model_validator(mode="after")
-    def validate_document_or_text(self) -> "DocumentOrTextRequest":
-        has_document_id = bool(self.document_id and self.document_id.strip())
-        has_text = bool(self.text and self.text.strip())
-        if not has_document_id and not has_text:
-            raise ValueError("Provide either document_id or text.")
-
-        if self.document_id:
-            self.document_id = self.document_id.strip()
-        if self.text:
-            self.text = self.text.strip()
+    def validate_document_id(self) -> "DocumentRequest":
+        self.document_id = self.document_id.strip()
+        if not self.document_id:
+            raise ValueError("Provide a valid document_id.")
         return self
 
 
-class SummaryRequest(DocumentOrTextRequest):
-    mode: str = Field(default="standard", pattern="^(short|standard|detailed)$")
+class SummaryRequest(DocumentRequest):
+    pass
 
 
 class SummaryResponse(BaseModel):
@@ -35,8 +29,8 @@ class SummaryResponse(BaseModel):
     summary: str
 
 
-class KeyPointRecommendationRequest(DocumentOrTextRequest):
-    count: int = Field(default=5, ge=1, le=15)
+class KeyPointRecommendationRequest(DocumentRequest):
+    pass
 
 
 class KeyPointRecommendationResponse(BaseModel):
@@ -44,7 +38,7 @@ class KeyPointRecommendationResponse(BaseModel):
     key_points: list[str]
 
 
-class QuestionGenerationRequest(DocumentOrTextRequest):
+class QuestionGenerationRequest(DocumentRequest):
     topic: str | None = None
     question_type: str = Field(default="objective", pattern="^(objective|subjective)$")
     difficulty: str = Field(default="easy", pattern="^(easy|medium|hard)$")
@@ -100,7 +94,7 @@ class TestReviewResponse(BaseModel):
     recommended_difficulty: str
 
 
-class DoubtRequest(DocumentOrTextRequest):
+class DoubtRequest(DocumentRequest):
     question: str = Field(min_length=3, max_length=2000)
 
 

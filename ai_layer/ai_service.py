@@ -12,6 +12,7 @@ from ai_layer.schemas import Question
 
 class AIService:
     _client: OpenAI | None = None
+    _PROMPT_CONTENT_LIMIT = 12000
 
     @classmethod
     def _get_client(cls) -> OpenAI | None:
@@ -39,8 +40,9 @@ class AIService:
         return None
 
     @staticmethod
-    def summarize(text: str, mode: str) -> str:
-        llm_result = AIService._summarize_with_llm(text=text, mode=mode)
+    def summarize(text: str) -> str:
+        sentence_count = AIService._summary_sentence_count_for_length(len(text))
+        llm_result = AIService._summarize_with_llm(text=text, sentence_count=sentence_count)
         if llm_result:
             return llm_result
 
@@ -49,28 +51,27 @@ class AIService:
         if not sentences:
             return "No usable content was found in the document."
 
-        if mode == "short":
-            selected = sentences[:2]
-        elif mode == "detailed":
-            selected = sentences[:6]
-        else:
-            selected = sentences[:4]
+        selected = AIService._pick_balanced_items(sentences, sentence_count)
 
         return " ".join(selected)
 
     @staticmethod
-    def _summarize_with_llm(text: str, mode: str) -> str | None:
+    def _summarize_with_llm(text: str, sentence_count: int) -> str | None:
         client = AIService._get_client()
         if client is None:
             return None
 
-        target_length = {"short": "2-3 lines", "standard": "5-7 lines", "detailed": "10-14 lines"}.get(mode, "5-7 lines")
+        target_length = f"{max(2, sentence_count - 1)}-{sentence_count + 1} sentences"
+        prepared_content = AIService._prepare_content_for_prompt(text)
         prompt = (
             "You are an educational assistant.\n"
-            "Return strict JSON with keys: summary (string)\n"
+            "Return strict JSON with exactly this key: summary (string).\n"
             f"Summary length target: {target_length}.\n"
-            "Use only the provided content, avoid hallucinations.\n\n"
-            f"Content:\n{text[:12000]}"
+            "Use only the provided content; do not hallucinate.\n"
+            "Read the full content and summarize coverage across beginning, middle, and end.\n"
+            "If multiple distinct topics are present, include each topic in a balanced way.\n"
+            "Focus on factual content and avoid generic filler language.\n\n"
+            f"Content:\n{prepared_content}"
         )
         try:
             response = client.responses.create(model=settings.llm_model, input=prompt)
@@ -86,13 +87,13 @@ class AIService:
             return None
 
     @staticmethod
-    def recommend_key_points(text: str, count: int = 5) -> list[str]:
+    def recommend_key_points(text: str) -> list[str]:
+        count = AIService._key_point_count_for_length(len(text))
         llm_key_points = AIService._recommend_key_points_with_llm(text=text, count=count)
         if llm_key_points:
             return llm_key_points
 
-        words = [w.lower() for w in re.findall(r"[a-zA-Z]{4,}", text)]
-        return [term for term, _ in Counter(words).most_common(count)]
+        return AIService._fallback_key_points(text=text, count=count)
 
     @staticmethod
     def _recommend_key_points_with_llm(text: str, count: int = 5) -> list[str] | None:
@@ -100,12 +101,15 @@ class AIService:
         if client is None:
             return None
 
+        prepared_content = AIService._prepare_content_for_prompt(text)
         prompt = (
-            "You recommend study key points from material.\n"
-            "Return strict JSON with key 'key_points' as an array of concise strings.\n"
+            "You are an educational assistant extracting study key points.\n"
+            "Return strict JSON with exactly one key: key_points (array of strings).\n"
             f"Provide exactly {count} key points.\n"
-            "Use only the provided content, avoid hallucinations.\n\n"
-            f"Content:\n{text[:12000]}"
+            "Read the full content and summarize coverage across beginning, middle, and end.\n"
+            "If multiple distinct topics are present, include each topic in a balanced way.\n"
+            "Use only the provided content and do not hallucinate.\n\n"
+            f"Content:\n{prepared_content}"
         )
         try:
             response = client.responses.create(model=settings.llm_model, input=prompt)
@@ -118,12 +122,55 @@ class AIService:
             if not isinstance(key_points_raw, list):
                 return None
 
-            key_points = [str(item).strip() for item in key_points_raw if str(item).strip()]
+            key_points = AIService._finalize_key_points(raw_points=key_points_raw, source_text=text, count=count)
             if not key_points:
                 return None
-            return key_points[:count]
+            return key_points
         except Exception:
             return None
+
+    @staticmethod
+    def _finalize_key_points(raw_points: list[Any], source_text: str, count: int) -> list[str]:
+        cleaned: list[str] = []
+        seen: set[str] = set()
+
+        for item in raw_points:
+            point = str(item).strip()
+            if not point:
+                continue
+            # Remove numbering/bullets returned by some model responses.
+            point = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", point).strip()
+            point = re.sub(r"\s+", " ", point)
+            if len(point) < 20:
+                continue
+            normalized = re.sub(r"[^\w\s]", "", point).lower().strip()
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            cleaned.append(point)
+            if len(cleaned) == count:
+                return cleaned
+
+        fallback = AIService._fallback_key_points(text=source_text, count=count)
+        for point in fallback:
+            normalized = re.sub(r"[^\w\s]", "", point).lower().strip()
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            cleaned.append(point)
+            if len(cleaned) == count:
+                break
+        return cleaned
+
+    @staticmethod
+    def _fallback_key_points(text: str, count: int) -> list[str]:
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if len(s.strip()) >= 40]
+        if sentences:
+            selected = AIService._pick_balanced_items(sentences, count)
+            return [sentence[:220] for sentence in selected]
+
+        words = [w.lower() for w in re.findall(r"[a-zA-Z]{4,}", text)]
+        return [f"Important concept: {term}" for term, _ in Counter(words).most_common(count)]
 
     @staticmethod
     def generate_questions(
@@ -189,14 +236,17 @@ class AIService:
             return None
 
         chosen_topic = topic or "general"
+        prepared_content = AIService._prepare_content_for_prompt(text)
         prompt = (
-            "You generate exam prep questions from study material.\n"
-            "Return strict JSON with key 'questions'.\n"
+            "You are an educational assistant generating exam-prep questions.\n"
+            "Return strict JSON with exactly one key: questions.\n"
             "questions must be an array of objects with keys: prompt, options, answer, topic.\n"
             f"question_type={question_type}, difficulty={difficulty}, count={count}, topic={chosen_topic}.\n"
-            "If question_type is objective, provide exactly 4 options. "
-            "If subjective, options should be an empty array.\n\n"
-            f"Content:\n{text[:12000]}"
+            "Use only the provided content and do not hallucinate.\n"
+            "Questions should cover the full content and avoid near-duplicates.\n"
+            "If question_type is objective, provide exactly 4 options and one clearly correct answer.\n"
+            "If question_type is subjective, options must be an empty array.\n\n"
+            f"Content:\n{prepared_content}"
         )
         try:
             response = client.responses.create(model=settings.llm_model, input=prompt)
@@ -243,10 +293,16 @@ class AIService:
             return (
                 "OpenAI key is not configured. Please set OPENAI_API_KEY in .env to use doubt support."
             )
+        prepared_content = AIService._prepare_content_for_prompt(text)
         prompt = (
-            "You are a teaching assistant. Answer the student's doubt using only provided content.\n"
-            "If content is insufficient, clearly say what is missing.\n\n"
-            f"Content:\n{text[:12000]}\n\n"
+            "You are a teaching assistant.\n"
+            "Answer the student's doubt using only the provided content.\n"
+            "If content is insufficient, explicitly say what is missing.\n"
+            "Keep the response concise, accurate, and easy to understand.\n"
+            "Read the full content and summarize coverage across beginning, middle, and end.\n"
+            "If multiple distinct topics are present, include each topic in a balanced way.\n"
+            "Do not invent facts that are not present in content.\n\n"
+            f"Content:\n{prepared_content}\n\n"
             f"Student doubt:\n{question}"
         )
         try:
@@ -255,3 +311,50 @@ class AIService:
             return output_text or "I'am Sorry, Unable to find answer. Can you please Eleborate your Query. "
         except Exception:
             return "Something went wrong. Please try again later."
+
+    @staticmethod
+    def _prepare_content_for_prompt(text: str, limit: int | None = None) -> str:
+        max_len = limit or AIService._PROMPT_CONTENT_LIMIT
+        content = text.strip()
+        if len(content) <= max_len:
+            return content
+
+        head_len = int(max_len * 0.7)
+        tail_len = max_len - head_len
+        head = content[:head_len].rstrip()
+        tail = content[-tail_len:].lstrip()
+        return f"{head}\n\n[... middle content omitted for length ...]\n\n{tail}"
+
+    @staticmethod
+    def _pick_balanced_items(items: list[str], count: int) -> list[str]:
+        if count <= 0 or not items:
+            return []
+        if len(items) <= count:
+            return items
+
+        first_half_count = (count + 1) // 2
+        second_half_count = count - first_half_count
+        selected = items[:first_half_count]
+        if second_half_count:
+            selected.extend(items[-second_half_count:])
+        return selected
+
+    @staticmethod
+    def _summary_sentence_count_for_length(content_len: int) -> int:
+        if content_len < 1500:
+            return 3
+        if content_len < 5000:
+            return 5
+        if content_len < 12000:
+            return 7
+        return 9
+
+    @staticmethod
+    def _key_point_count_for_length(content_len: int) -> int:
+        if content_len < 1500:
+            return 3
+        if content_len < 5000:
+            return 5
+        if content_len < 12000:
+            return 7
+        return 9
