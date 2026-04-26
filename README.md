@@ -13,11 +13,12 @@ The AI layer supports:
 
 - document upload and parsing (`PDF`, `DOCX`, `TXT`, image OCR)
 - chapter/chunk ingestion for phase-1 retrieval readiness
-- summary generation (`short`, `standard`, `detailed`)
+- summary generation (auto-sized based on content length)
 - key-point recommendation
 - objective/subjective question generation
 - answer review with weak-topic detection and next difficulty recommendation
 - doubt answering grounded in provided document/text
+- repository abstraction for storage access (in-memory implementation in phase 1)
 
 ## Folder Structure
 
@@ -73,20 +74,20 @@ All routes below are exposed from the AI router:
 
 - `POST /upload`
   - Uploads a file, parses text, stores the document, and runs ingestion.
-- `POST /summary`
-  - Input: `document_id` or raw `text` + `mode`.
+- `GET /summary?document_id=<id>`
+  - Input: uploaded `document_id`.
   - Output: generated summary.
-- `POST /keypoints`
-  - Input: `document_id` or raw `text` + `count`.
+- `GET /keypoints?document_id=<id>`
+  - Input: uploaded `document_id`.
   - Output: recommended key points.
 - `POST /questions`
-  - Input: `document_id` or raw `text`, `question_type`, `difficulty`, `count`, optional `topic`.
+  - Input: `document_id`, `question_type`, `difficulty`, `count`, optional `topic`.
   - Output: generated question set.
 - `POST /review`
   - Input: `document_id` + submitted answers.
   - Output: per-question review, total score, weak topics, recommended difficulty.
 - `POST /doubt`
-  - Input: `document_id` or raw `text` + user `question`.
+  - Input: `document_id` + user `question`.
   - Output: AI-generated doubt response.
 - `GET /documents/{document_id}/chapters`
   - Output: chapter boundaries and chunk counts.
@@ -95,12 +96,8 @@ All routes below are exposed from the AI router:
 
 ## Request Pattern
 
-Most content-generation endpoints accept either:
-
-- a previously uploaded `document_id`, or
-- direct `text` input (min length `20`, max length `50000`).
-
-If direct text is provided, a temporary in-memory document is created and ingested.
+Most content-generation endpoints are `document_id`-driven.
+Upload content first via `/upload`, then reuse returned `document_id` for summary, keypoints, questions, review, doubt, and chunk/chapter reads.
 
 ## Service Notes
 
@@ -127,12 +124,19 @@ If direct text is provided, a temporary in-memory document is created and ingest
   - key-point extraction
   - question generation
 - Doubt answering currently requires OpenAI key for meaningful responses.
+- Summary length and key-point count are auto-selected from content length.
 
 ### `EvaluationService`
 
 - Uses LLM scoring when available, otherwise token-overlap heuristic.
 - Correctness threshold is `0.6` score.
 - Computes weak-topic suggestions and recommended next difficulty (`easy`, `medium`, `hard`).
+
+### `repositories`
+
+- Defines a storage contract (`DocumentRepository`) and in-memory implementation.
+- `api_router` uses repository methods instead of direct storage access.
+- This keeps phase-1 behavior unchanged while making persistence migration easier later.
 
 ## Typical Flow
 
