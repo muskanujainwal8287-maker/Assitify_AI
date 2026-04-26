@@ -3,32 +3,34 @@ from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 
+from ai_layer.ai_service import AIService
 from ai_layer.config import settings
+from ai_layer.evaluation_service import EvaluationService
+from ai_layer.ingestion_service import IngestionService
+from ai_layer.parser_service import ParserService
+from ai_layer.repositories.provider import get_repository
 from ai_layer.schemas import DocumentUploadResponse
 from ai_layer.schemas import (
     ChunkInfo,
+    ChapterInfo,
     DocumentChaptersResponse,
     DocumentChunksResponse,
     DoubtRequest,
     DoubtResponse,
-    ChapterInfo,
     KeyPointRecommendationResponse,
     QuestionGenerationRequest,
     QuestionGenerationResponse,
     SummaryResponse,
 )
 from ai_layer.schemas import TestReviewRequest, TestReviewResponse
-from ai_layer.ai_service import AIService
-from ai_layer.evaluation_service import EvaluationService
-from ai_layer.ingestion_service import IngestionService
-from ai_layer.parser_service import ParserService
-from ai_layer.storage import StoredDocument, store
+from ai_layer.storage import StoredDocument
 
 router = APIRouter()
+repo = get_repository()
 
 
 def _resolve_document(document_id: str) -> StoredDocument:
-    document = store.documents.get(document_id)
+    document = repo.get_document(document_id)
     if document:
         return document
 
@@ -52,13 +54,14 @@ async def upload_document(
 
     if not has_file:
         document_id = str(uuid.uuid4())
-        store.documents[document_id] = StoredDocument(
+        document = StoredDocument(
             id=document_id,
             filename="pasted_text.txt",
             detected_type="text/plain",
             text=cleaned_text,
         )
-        IngestionService.ingest_document(store.documents[document_id])
+        IngestionService.ingest_document(document)
+        repo.save_document(document)
         return DocumentUploadResponse(
             document_id=document_id,
             filename="pasted_text.txt",
@@ -89,10 +92,11 @@ async def upload_document(
 
     stored_type = f"{detected_type}+text" if has_text else detected_type
 
-    store.documents[document_id] = StoredDocument(
+    document = StoredDocument(
         id=document_id, filename=file.filename, detected_type=stored_type, text=combined_text
     )
-    IngestionService.ingest_document(store.documents[document_id])
+    IngestionService.ingest_document(document)
+    repo.save_document(document)
     return DocumentUploadResponse(
         document_id=document_id,
         filename=file.filename,
@@ -125,13 +129,13 @@ def generate_questions(payload: QuestionGenerationRequest) -> QuestionGeneration
         count=payload.count,
         topic=payload.topic,
     )
-    store.questions_by_document[document.id] = questions
+    repo.save_questions(document.id, questions)
     return QuestionGenerationResponse(document_id=document.id, questions=questions)
 
 
 @router.post("/review", response_model=TestReviewResponse)
 def review_test(payload: TestReviewRequest) -> TestReviewResponse:
-    questions = store.questions_by_document.get(payload.document_id)
+    questions = repo.get_questions(payload.document_id)
     if not questions:
         raise HTTPException(status_code=404, detail="No generated questions found for this document.")
 
@@ -157,9 +161,7 @@ def resolve_doubt(payload: DoubtRequest) -> DoubtResponse:
 
 @router.get("/documents/{document_id}/chapters", response_model=DocumentChaptersResponse)
 def get_document_chapters(document_id: str) -> DocumentChaptersResponse:
-    document = store.documents.get(document_id)
-    if not document:
-        raise HTTPException(status_code=404, detail="Document not found.")
+    document = _resolve_document(document_id)
 
     if not document.chapters:
         IngestionService.ingest_document(document)
@@ -186,9 +188,7 @@ def get_document_chapters(document_id: str) -> DocumentChaptersResponse:
 def get_document_chunks(
     document_id: str, chapter_id: str | None = Query(default=None), limit: int = Query(default=50, ge=1, le=200)
 ) -> DocumentChunksResponse:
-    document = store.documents.get(document_id)
-    if not document:
-        raise HTTPException(status_code=404, detail="Document not found.")
+    document = _resolve_document(document_id)
 
     if not document.chunks:
         IngestionService.ingest_document(document)
