@@ -4,7 +4,7 @@
 
 End-to-end project for exam preparation with 3 layers:
 
-- AI layer: summary + question generation + answer evaluation
+- AI layer (Git branch `ai-layer`): summary + question generation + answer evaluation + Doubt Discussions  
 - Backend layer (FastAPI): upload, parsing, generation, scoring APIs
 - Frontend layer (React + Vite): student workflow UI
 
@@ -19,8 +19,7 @@ End-to-end project for exam preparation with 3 layers:
 
 ## Project Structure
 
-- `ai_layer/`
-  - `parser_service.py`, `ai_service.py`, `evaluation_service.py`
+- **`ai-layer` branch** — AI services (`parser_service.py`, `ai_service.py`, `evaluation_service.py`, etc.)
 - `backend/`
   - `app/routes/` API routers (`docs`, `generate`, `test`)
   - `app/services/` backend storage/service glue

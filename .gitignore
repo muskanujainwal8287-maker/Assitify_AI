@@ -1,0 +1,25 @@
+# Virtual environments
+.venv/
+
+# Secrets and local config
+.env
+
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# OS / editor
+desktop.ini
+Thumbs.db
+.DS_Store
+
+# Debug / local logs
+debug-*.log
