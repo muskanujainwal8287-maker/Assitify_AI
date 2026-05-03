@@ -1,69 +1,160 @@
-# AI Exam Prep Platform
+# Assitify AI
 
-## 🚧 Project Status: In Progress
+## Project status: in progress
 
-End-to-end project for exam preparation with 3 layers:
+End-to-end project for exam preparation with three layers:
 
-- AI layer (Git branch `ai-layer`): summary + question generation + answer evaluation + Doubt Discussions  
-- Backend layer (FastAPI): upload, parsing, generation, scoring APIs
-- Frontend layer (React + Vite): student workflow UI
+- **AI layer** (`ai_layer` in this repo): document parsing, summaries, questions, answer review, doubt handling
+- **Backend** (FastAPI): upload, parsing, generation, scoring APIs (`backend/`)
+- **Frontend** (React + Vite): student workflow (`frontend/`)
 
-## Features
+The sections below describe the **AI layer** service and its HTTP API.
 
-- Upload and parse `PDF`, `DOCX`, `TXT`, and images (`PNG`, `JPG`, `WEBP`)
-- OCR for image notes (via `pytesseract`)
-- Summary generation (`short`, `standard`, `detailed`)
-- Objective and subjective test creation
-- Answer review with score and AI feedback
-- Weak topic detection + recommended next difficulty
+## Python version
 
-## Project Structure
+Use `Python 3.12.x` for this project.
+`PyMuPDF` may fail to install on Windows with `Python 3.14` because pip may fall back to source builds.
 
-- **`ai-layer` branch** — AI services (`parser_service.py`, `ai_service.py`, `evaluation_service.py`, etc.)
-- `backend/`
-  - `app/routes/` API routers (`docs`, `generate`, `test`)
-  - `app/services/` backend storage/service glue
-  - `app/schemas/` request/response models
-- `frontend/`
-  - `src/App.jsx` complete exam prep workflow UI
-  - `src/services/api.js` API integration layer
+## What it provides
 
-## Backend Setup
+The AI layer supports:
+
+- document upload and parsing (`PDF`, `DOCX`, `TXT`, image OCR)
+- chapter/chunk ingestion for phase-1 retrieval readiness
+- summary generation (auto-sized based on content length)
+- key-point recommendation
+- objective/subjective question generation
+- answer review with weak-topic detection and next difficulty recommendation
+- doubt answering grounded in provided document/text
+- repository abstraction for storage access (in-memory implementation in phase 1)
+
+Elsewhere in the repo:
+
+- `backend/` — `app/routes/`, `app/services/`, `app/schemas/`
+- `frontend/` — `src/App.jsx`, `src/services/api.js`
+
+## Folder structure
+
+- `ai_layer/main.py`
+  - FastAPI app setup and router registration.
+- `ai_layer/api_router.py`
+  - REST endpoints for upload, summary, keypoints, questions, review, doubt, chapters, and chunks.
+- `ai_layer/parser_service.py`
+  - Parses supported file formats into plain text.
+- `ai_layer/ingestion_service.py`
+  - Splits documents into chapter-like segments and overlapping chunks.
+- `ai_layer/ai_service.py`
+  - LLM-backed summary, key-point, question, and doubt logic with local fallbacks.
+- `ai_layer/evaluation_service.py`
+  - LLM-backed answer scoring/weak-topic analysis with heuristic fallback.
+- `ai_layer/storage.py`
+  - In-memory storage models (`StoredDocument`, chapters, chunks, generated questions).
+- `ai_layer/schemas.py`
+  - Request/response models used by API routes.
+- `ai_layer/config.py`
+  - Environment-backed settings (upload dir, OpenAI key, model, etc.).
+- `start.py`
+  - Convenience launcher for `uvicorn ai_layer.main:app --reload`.
+
+## Dependencies
+
+Create and activate a virtual environment with Python 3.12, then install dependencies:
 
 ```bash
-cd backend
-python -m venv .venv
-# Windows PowerShell
-.\.venv\Scripts\Activate.ps1
+py -3.12 -m venv .venv
+.venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload
 ```
-
-Backend runs on `http://127.0.0.1:8000`.
 
 ### OCR requirement
 
-Install Tesseract OCR engine on your machine and ensure it is available in PATH.
+Install the Tesseract OCR engine and ensure `tesseract` is available in system `PATH`.
 
-## Frontend Setup
+## Configuration
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
+The app reads settings from environment variables (via `.env`):
 
-Frontend runs on `http://localhost:5173`.
+- `OPENAI_API_KEY` - enables LLM features.
+- `LLM_MODEL` - model passed to OpenAI responses API.
+- `UPLOAD_DIR` - upload storage directory (default: `uploads`).
+- `ALLOW_ORIGINS` - CORS origin list.
 
-## API Flow
+If `OPENAI_API_KEY` is missing, services use local fallback logic where implemented.
 
-1. `POST /api/docs/upload` -> parse file and create `document_id`
-2. `POST /api/generate/summary` -> generate summary and key points
-3. `POST /api/generate/questions` -> generate objective/subjective questions
-4. `POST /api/test/review` -> evaluate answers, score, weak topics
+## API endpoints
 
-## Next Improvements
+All routes below are exposed from the AI router:
 
-- Replace local generation with OpenAI/Gemini/Llama models
-- Add PostgreSQL persistence for users/tests history
-- Add adaptive test engine based on previous attempts
+- `POST /upload`
+  - Uploads a file, parses text, stores the document, and runs ingestion.
+- `GET /summary?document_id=<id>`
+  - Input: uploaded `document_id`.
+  - Output: generated summary.
+- `GET /keypoints?document_id=<id>`
+  - Input: uploaded `document_id`.
+  - Output: recommended key points.
+- `POST /questions`
+  - Input: `document_id`, `question_type`, `difficulty`, `count`, optional `topic`.
+  - Output: generated question set.
+- `POST /review`
+  - Input: `document_id` + submitted answers.
+  - Output: per-question review, total score, weak topics, recommended difficulty.
+- `POST /doubt`
+  - Input: `document_id` + user `question`.
+  - Output: AI-generated doubt response.
+- `GET /documents/{document_id}/chapters`
+  - Output: chapter boundaries and chunk counts.
+- `GET /documents/{document_id}/chunks?chapter_id=<id>&limit=50`
+  - Output: chunk metadata and text preview (optionally filtered by chapter).
+
+## Request pattern
+
+Most content-generation endpoints are `document_id`-driven.
+Upload content first via `/upload`, then reuse returned `document_id` for summary, keypoints, questions, review, doubt, and chunk/chapter reads.
+
+## Service notes
+
+### `ParserService`
+
+- Detects input type from MIME type/extension.
+- Supports:
+  - PDF via `fitz` (PyMuPDF)
+  - DOCX via `python-docx`
+  - image OCR via `Pillow` + `pytesseract`
+  - plain text fallback
+
+### `IngestionService`
+
+- Detects chapter-like headings using regex.
+- Creates `StoredChapter` entries with start/end character spans.
+- Builds overlapping chunks (`chunk_size=1200`, `overlap=200` by default).
+
+### `AIService`
+
+- Uses OpenAI Responses API when configured.
+- Includes fallback behavior for:
+  - summary generation
+  - key-point extraction
+  - question generation
+- Doubt answering currently requires OpenAI key for meaningful responses.
+- Summary length and key-point count are auto-selected from content length.
+
+### `EvaluationService`
+
+- Uses LLM scoring when available, otherwise token-overlap heuristic.
+- Correctness threshold is `0.6` score.
+- Computes weak-topic suggestions and recommended next difficulty (`easy`, `medium`, `hard`).
+
+### `repositories`
+
+- Defines a storage contract (`DocumentRepository`) and in-memory implementation.
+- `api_router` uses repository methods instead of direct storage access.
+- This keeps phase-1 behavior unchanged while making persistence migration easier later.
+
+## Typical flow
+
+1. Upload document via `/upload`.
+2. Use `document_id` for `/summary`, `/keypoints`, and `/questions`.
+3. Submit answers to `/review`.
+4. Use `/doubt` for targeted follow-up explanations.
+5. Inspect chapter/chunk structure via `/documents/{id}/chapters` and `/documents/{id}/chunks`.
