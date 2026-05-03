@@ -1,9 +1,34 @@
+import os
+import shutil
+import sys
 from pathlib import Path
 
 import docx
 import fitz
 from PIL import Image
 import pytesseract
+
+
+def _resolve_tesseract_cmd() -> str | None:
+    env = (os.environ.get("TESSERACT_CMD") or "").strip()
+    if env and Path(env).is_file():
+        return env
+    found = shutil.which("tesseract")
+    if found:
+        return found
+    if sys.platform == "win32":
+        for candidate in (
+            r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+            r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+        ):
+            if Path(candidate).is_file():
+                return candidate
+    return None
+
+
+_tess = _resolve_tesseract_cmd()
+if _tess:
+    pytesseract.pytesseract.tesseract_cmd = _tess
 
 
 class ParserService:
