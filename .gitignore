@@ -57,3 +57,6 @@ pnpm-debug.log*
 tmp/
 temp/
 .cache/
+
+#----------Tested Datasets----------
+uploads/
