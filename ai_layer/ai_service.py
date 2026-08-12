@@ -1,66 +1,33 @@
-import json
+import logging
 import re
 import uuid
 from collections import Counter
 from typing import Any
 
-from openai import OpenAI
-
-from ai_layer.config import settings
+from ai_layer.llm_result import LLMResult
+from ai_layer.llm_utils import call_llm, extract_json_from_text
 from ai_layer.schemas import Question
+
+logger = logging.getLogger(__name__)
 
 
 class AIService:
-    _client: OpenAI | None = None
     _PROMPT_CONTENT_LIMIT = 12000
 
-    @classmethod
-    def _get_client(cls) -> OpenAI | None:
-        if not settings.openai_api_key:
-            return None
-        if cls._client is None:
-            cls._client = OpenAI(api_key=settings.openai_api_key)
-        return cls._client
-
     @staticmethod
-    def _extract_json_from_text(content: str) -> dict[str, Any] | None:
-        try:
-            return json.loads(content)
-        except json.JSONDecodeError:
-            pass
-
-        start = content.find("{")
-        end = content.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            candidate = content[start : end + 1]
-            try:
-                return json.loads(candidate)
-            except json.JSONDecodeError:
-                return None
-        return None
-
-    @staticmethod
-    def summarize(text: str) -> str:
+    def summarize(text: str) -> LLMResult[str]:
         sentence_count = AIService._summary_sentence_count_for_length(len(text))
-        llm_result = AIService._summarize_with_llm(text=text, sentence_count=sentence_count)
+        llm_result, error = AIService._summarize_with_llm(text=text, sentence_count=sentence_count)
         if llm_result:
-            return llm_result
+            return LLMResult.from_openai(llm_result)
 
-        # Fallback summary if OpenAI is unavailable or parsing fails.
-        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
-        if not sentences:
-            return "No usable content was found in the document."
-
-        selected = AIService._pick_balanced_items(sentences, sentence_count)
-
-        return " ".join(selected)
+        fallback = AIService._fallback_summary(text, sentence_count)
+        reason = error or "OpenAI summary response could not be parsed"
+        logger.info("Using fallback summary: %s", reason)
+        return LLMResult.from_fallback(fallback, error=error, reason=reason)
 
     @staticmethod
-    def _summarize_with_llm(text: str, sentence_count: int) -> str | None:
-        client = AIService._get_client()
-        if client is None:
-            return None
-
+    def _summarize_with_llm(text: str, sentence_count: int) -> tuple[str | None, str | None]:
         target_length = f"{max(2, sentence_count - 1)}-{sentence_count + 1} sentences"
         prepared_content = AIService._prepare_content_for_prompt(text)
         prompt = (
@@ -73,61 +40,68 @@ class AIService:
             "Focus on factual content and avoid generic filler language.\n\n"
             f"Content:\n{prepared_content}"
         )
-        try:
-            response = client.responses.create(model=settings.llm_model, input=prompt)
-            output_text = getattr(response, "output_text", "") or ""
-            parsed = AIService._extract_json_from_text(output_text)
-            if not parsed:
-                return None
-            summary = str(parsed.get("summary", "")).strip()
-            if summary:
-                return summary
-            return None
-        except Exception:
-            return None
+        output_text, error = call_llm(prompt, json_mode=True)
+        if error:
+            return None, error
+
+        parsed, parse_error = extract_json_from_text(output_text or "")
+        if not parsed:
+            return None, parse_error
+
+        summary = str(parsed.get("summary", "")).strip()
+        if summary:
+            return summary, None
+        return None, "OpenAI JSON response did not include a non-empty 'summary' field"
 
     @staticmethod
-    def recommend_key_points(text: str) -> list[str]:
+    def _fallback_summary(text: str, sentence_count: int) -> str:
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
+        if not sentences:
+            return "No usable content was found in the document."
+        selected = AIService._pick_balanced_items(sentences, sentence_count)
+        return " ".join(selected)
+
+    @staticmethod
+    def recommend_key_points(text: str) -> LLMResult[list[str]]:
         count = AIService._key_point_count_for_length(len(text))
-        llm_key_points = AIService._recommend_key_points_with_llm(text=text, count=count)
+        llm_key_points, error = AIService._recommend_key_points_with_llm(text=text, count=count)
         if llm_key_points:
-            return llm_key_points
+            return LLMResult.from_openai(llm_key_points)
 
-        return AIService._fallback_key_points(text=text, count=count)
+        fallback = AIService._fallback_key_points(text=text, count=count)
+        reason = error or "OpenAI key-point response could not be parsed"
+        logger.info("Using fallback key points: %s", reason)
+        return LLMResult.from_fallback(fallback, error=error, reason=reason)
 
     @staticmethod
-    def _recommend_key_points_with_llm(text: str, count: int = 5) -> list[str] | None:
-        client = AIService._get_client()
-        if client is None:
-            return None
-
+    def _recommend_key_points_with_llm(text: str, count: int = 5) -> tuple[list[str] | None, str | None]:
         prepared_content = AIService._prepare_content_for_prompt(text)
         prompt = (
             "You are an educational assistant extracting study key points.\n"
             "Return strict JSON with exactly one key: key_points (array of strings).\n"
             f"Provide exactly {count} key points.\n"
+            "Each key point must be at least 20 characters.\n"
             "Read the full content and summarize coverage across beginning, middle, and end.\n"
             "If multiple distinct topics are present, include each topic in a balanced way.\n"
             "Use only the provided content and do not hallucinate.\n\n"
             f"Content:\n{prepared_content}"
         )
-        try:
-            response = client.responses.create(model=settings.llm_model, input=prompt)
-            output_text = getattr(response, "output_text", "") or ""
-            parsed = AIService._extract_json_from_text(output_text)
-            if not parsed:
-                return None
+        output_text, error = call_llm(prompt, json_mode=True)
+        if error:
+            return None, error
 
-            key_points_raw = parsed.get("key_points", [])
-            if not isinstance(key_points_raw, list):
-                return None
+        parsed, parse_error = extract_json_from_text(output_text or "")
+        if not parsed:
+            return None, parse_error
 
-            key_points = AIService._finalize_key_points(raw_points=key_points_raw, source_text=text, count=count)
-            if not key_points:
-                return None
-            return key_points
-        except Exception:
-            return None
+        key_points_raw = parsed.get("key_points", [])
+        if not isinstance(key_points_raw, list):
+            return None, "OpenAI JSON response 'key_points' was not an array"
+
+        key_points = AIService._finalize_key_points(raw_points=key_points_raw, source_text=text, count=count)
+        if not key_points:
+            return None, "OpenAI key points failed validation (empty or too short)"
+        return key_points, None
 
     @staticmethod
     def _finalize_key_points(raw_points: list[Any], source_text: str, count: int) -> list[str]:
@@ -138,7 +112,6 @@ class AIService:
             point = str(item).strip()
             if not point:
                 continue
-            # Remove numbering/bullets returned by some model responses.
             point = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", point).strip()
             point = re.sub(r"\s+", " ", point)
             if len(point) < 20:
@@ -179,14 +152,28 @@ class AIService:
         difficulty: str,
         count: int,
         topic: str | None = None,
-    ) -> list[Question]:
-        llm_questions = AIService._generate_questions_with_llm(
+    ) -> LLMResult[list[Question]]:
+        llm_questions, error = AIService._generate_questions_with_llm(
             text=text, question_type=question_type, difficulty=difficulty, count=count, topic=topic
         )
         if llm_questions:
-            return llm_questions
+            return LLMResult.from_openai(llm_questions)
 
-        # Fallback question generation if OpenAI is unavailable.
+        fallback = AIService._fallback_questions(
+            text=text, question_type=question_type, difficulty=difficulty, count=count, topic=topic
+        )
+        reason = error or "OpenAI question response could not be parsed"
+        logger.info("Using fallback questions: %s", reason)
+        return LLMResult.from_fallback(fallback, error=error, reason=reason)
+
+    @staticmethod
+    def _fallback_questions(
+        text: str,
+        question_type: str,
+        difficulty: str,
+        count: int,
+        topic: str | None,
+    ) -> list[Question]:
         sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if len(s.strip()) > 40]
         if not sentences:
             sentences = ["This content was too short. Can't generate questions."]
@@ -230,11 +217,7 @@ class AIService:
         difficulty: str,
         count: int,
         topic: str | None = None,
-    ) -> list[Question] | None:
-        client = AIService._get_client()
-        if client is None:
-            return None
-
+    ) -> tuple[list[Question] | None, str | None]:
         chosen_topic = topic or "general"
         prepared_content = AIService._prepare_content_for_prompt(text)
         prompt = (
@@ -248,51 +231,56 @@ class AIService:
             "If question_type is subjective, options must be an empty array.\n\n"
             f"Content:\n{prepared_content}"
         )
-        try:
-            response = client.responses.create(model=settings.llm_model, input=prompt)
-            output_text = getattr(response, "output_text", "") or ""
-            parsed = AIService._extract_json_from_text(output_text)
-            if not parsed:
-                return None
-            questions_raw = parsed.get("questions", [])
-            if not isinstance(questions_raw, list):
-                return None
+        output_text, error = call_llm(prompt, json_mode=True)
+        if error:
+            return None, error
 
-            parsed_questions: list[Question] = []
-            for item in questions_raw[:count]:
-                if not isinstance(item, dict):
-                    continue
-                prompt_text = str(item.get("prompt", "")).strip()
-                answer_text = str(item.get("answer", "")).strip()
-                item_topic = str(item.get("topic", chosen_topic) or chosen_topic).strip() or chosen_topic
-                options_raw = item.get("options", [])
-                options = [str(opt).strip() for opt in options_raw] if isinstance(options_raw, list) else []
-                if question_type == "objective" and len(options) != 4:
-                    continue
-                if not prompt_text or not answer_text:
-                    continue
-                parsed_questions.append(
-                    Question(
-                        id=str(uuid.uuid4()),
-                        prompt=prompt_text,
-                        question_type=question_type,
-                        options=options if question_type == "objective" else [],
-                        answer=answer_text,
-                        difficulty=difficulty,
-                        topic=item_topic,
-                    )
+        parsed, parse_error = extract_json_from_text(output_text or "")
+        if not parsed:
+            return None, parse_error
+
+        questions_raw = parsed.get("questions", [])
+        if not isinstance(questions_raw, list):
+            return None, "OpenAI JSON response 'questions' was not an array"
+
+        parsed_questions: list[Question] = []
+        skipped = 0
+        for item in questions_raw[: count * 2]:
+            if not isinstance(item, dict):
+                skipped += 1
+                continue
+            prompt_text = str(item.get("prompt", "")).strip()
+            answer_text = str(item.get("answer", "")).strip()
+            item_topic = str(item.get("topic", chosen_topic) or chosen_topic).strip() or chosen_topic
+            options_raw = item.get("options", [])
+            options = [str(opt).strip() for opt in options_raw] if isinstance(options_raw, list) else []
+            if question_type == "objective" and len(options) != 4:
+                skipped += 1
+                continue
+            if not prompt_text or not answer_text:
+                skipped += 1
+                continue
+            parsed_questions.append(
+                Question(
+                    id=str(uuid.uuid4()),
+                    prompt=prompt_text,
+                    question_type=question_type,
+                    options=options if question_type == "objective" else [],
+                    answer=answer_text,
+                    difficulty=difficulty,
+                    topic=item_topic,
                 )
-            return parsed_questions or None
-        except Exception:
-            return None
+            )
+            if len(parsed_questions) == count:
+                break
+
+        if parsed_questions:
+            return parsed_questions, None
+        detail = f"OpenAI returned no valid questions ({skipped} item(s) failed validation)"
+        return None, detail
 
     @staticmethod
-    def answer_doubt(text: str, question: str) -> str:
-        client = AIService._get_client()
-        if client is None:
-            return (
-                "OpenAI key is not configured. Please set OPENAI_API_KEY in .env to use doubt support."
-            )
+    def answer_doubt(text: str, question: str) -> LLMResult[str]:
         prepared_content = AIService._prepare_content_for_prompt(text)
         prompt = (
             "You are a teaching assistant.\n"
@@ -305,12 +293,17 @@ class AIService:
             f"Content:\n{prepared_content}\n\n"
             f"Student doubt:\n{question}"
         )
-        try:
-            response = client.responses.create(model=settings.llm_model, input=prompt)
-            output_text = (getattr(response, "output_text", "") or "").strip()
-            return output_text or "I'am Sorry, Unable to find answer. Can you please Eleborate your Query. "
-        except Exception:
-            return "Something went wrong. Please try again later."
+        output_text, error = call_llm(prompt)
+        if error:
+            fallback_answer = (
+                f"Unable to reach OpenAI: {error}. "
+                "Please verify OPENAI_API_KEY, LLM_MODEL, and billing, then try again."
+            )
+            logger.info("Doubt answering failed: %s", error)
+            return LLMResult.from_fallback(fallback_answer, error=error, reason=error)
+
+        answer = output_text or "I am sorry, unable to find an answer. Can you please elaborate your query?"
+        return LLMResult.from_openai(answer)
 
     @staticmethod
     def _prepare_content_for_prompt(text: str, limit: int | None = None) -> str:

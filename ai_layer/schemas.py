@@ -1,5 +1,12 @@
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
+
+
+class AIResponseMeta(BaseModel):
+    source: Literal["openai", "fallback"]
+    llm_error: str | None = None
+    fallback_reason: str | None = None
 
 
 class DocumentUploadResponse(BaseModel):
@@ -24,7 +31,7 @@ class SummaryRequest(DocumentRequest):
     pass
 
 
-class SummaryResponse(BaseModel):
+class SummaryResponse(AIResponseMeta):
     document_id: str
     summary: str
 
@@ -33,7 +40,7 @@ class KeyPointRecommendationRequest(DocumentRequest):
     pass
 
 
-class KeyPointRecommendationResponse(BaseModel):
+class KeyPointRecommendationResponse(AIResponseMeta):
     document_id: str
     key_points: list[str]
 
@@ -55,7 +62,7 @@ class Question(BaseModel):
     topic: str
 
 
-class QuestionGenerationResponse(BaseModel):
+class QuestionGenerationResponse(AIResponseMeta):
     document_id: str
     questions: list[Question]
 
@@ -86,19 +93,22 @@ class WeakTopic(BaseModel):
     suggestion: str
 
 
-class TestReviewResponse(BaseModel):
+class TestReviewResponse(AIResponseMeta):
+    source: Literal["openai", "fallback", "mixed"]
     document_id: str
     total_score: float = Field(ge=0, le=100)
     reviews: list[AnswerReview]
     weak_topics: list[WeakTopic]
     recommended_difficulty: str
+    scoring_source: Literal["openai", "fallback", "mixed"] = "fallback"
+    weak_topics_source: Literal["openai", "fallback"] = "fallback"
 
 
 class DoubtRequest(DocumentRequest):
     question: str = Field(min_length=3, max_length=2000)
 
 
-class DoubtResponse(BaseModel):
+class DoubtResponse(AIResponseMeta):
     document_id: str
     question: str
     answer: str
