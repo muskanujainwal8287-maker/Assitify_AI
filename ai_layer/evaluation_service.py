@@ -144,7 +144,10 @@ class EvaluationService:
         if not parsed:
             return None, parse_error
 
-        score = float(parsed.get("score_0_to_1", 0))
+        try:
+            score = float(parsed.get("score_0_to_1", 0))
+        except (TypeError, ValueError):
+            return None, "OpenAI score_0_to_1 was not a valid number"
         explanation = str(parsed.get("explanation", "")).strip()
         score = max(0.0, min(1.0, score))
         if not explanation:
@@ -175,7 +178,7 @@ class EvaluationService:
     @staticmethod
     def _weak_topics_with_llm(topic_scores: dict[str, list[float]]) -> tuple[list[WeakTopic] | None, str | None]:
         if not topic_scores:
-            return None, "No topic scores available for weak-topic analysis"
+            return [], None
 
         payload = {
             "topic_scores": {

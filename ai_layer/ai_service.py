@@ -98,13 +98,13 @@ class AIService:
         if not isinstance(key_points_raw, list):
             return None, "OpenAI JSON response 'key_points' was not an array"
 
-        key_points = AIService._finalize_key_points(raw_points=key_points_raw, source_text=text, count=count)
+        key_points = AIService._finalize_key_points(raw_points=key_points_raw, count=count)
         if not key_points:
             return None, "OpenAI key points failed validation (empty or too short)"
         return key_points, None
 
     @staticmethod
-    def _finalize_key_points(raw_points: list[Any], source_text: str, count: int) -> list[str]:
+    def _finalize_key_points(raw_points: list[Any], count: int) -> list[str]:
         cleaned: list[str] = []
         seen: set[str] = set()
 
@@ -116,16 +116,6 @@ class AIService:
             point = re.sub(r"\s+", " ", point)
             if len(point) < 20:
                 continue
-            normalized = re.sub(r"[^\w\s]", "", point).lower().strip()
-            if normalized in seen:
-                continue
-            seen.add(normalized)
-            cleaned.append(point)
-            if len(cleaned) == count:
-                return cleaned
-
-        fallback = AIService._fallback_key_points(text=source_text, count=count)
-        for point in fallback:
             normalized = re.sub(r"[^\w\s]", "", point).lower().strip()
             if normalized in seen:
                 continue
