@@ -23,10 +23,19 @@ from ai_layer.schemas import (
     SummaryResponse,
 )
 from ai_layer.schemas import TestReviewRequest, TestReviewResponse
+from ai_layer.llm_result import LLMResult
 from ai_layer.storage import StoredDocument
 
 router = APIRouter()
 repo = get_repository()
+
+
+def _meta_from_result(result: LLMResult) -> dict[str, str | None]:
+    return {
+        "source": result.source,
+        "llm_error": result.error,
+        "fallback_reason": result.fallback_reason,
+    }
 
 
 def _resolve_document(document_id: str) -> StoredDocument:
@@ -108,29 +117,29 @@ async def upload_document(
 @router.get("/summary", response_model=SummaryResponse)
 def generate_summary(document_id: str = Query(...)) -> SummaryResponse:
     document = _resolve_document(document_id)
-    summary = AIService.summarize(document.text)
-    return SummaryResponse(document_id=document.id, summary=summary)
+    result = AIService.summarize(document.text)
+    return SummaryResponse(document_id=document.id, summary=result.data, **_meta_from_result(result))
 
 
 @router.get("/keypoints", response_model=KeyPointRecommendationResponse)
 def generate_keypoints(document_id: str = Query(...)) -> KeyPointRecommendationResponse:
     document = _resolve_document(document_id)
-    key_points = AIService.recommend_key_points(document.text)
-    return KeyPointRecommendationResponse(document_id=document.id, key_points=key_points)
+    result = AIService.recommend_key_points(document.text)
+    return KeyPointRecommendationResponse(document_id=document.id, key_points=result.data, **_meta_from_result(result))
 
 
 @router.post("/questions", response_model=QuestionGenerationResponse)
 def generate_questions(payload: QuestionGenerationRequest) -> QuestionGenerationResponse:
     document = _resolve_document(payload.document_id)
-    questions = AIService.generate_questions(
+    result = AIService.generate_questions(
         text=document.text,
         question_type=payload.question_type,
         difficulty=payload.difficulty,
         count=payload.count,
         topic=payload.topic,
     )
-    repo.save_questions(document.id, questions)
-    return QuestionGenerationResponse(document_id=document.id, questions=questions)
+    repo.save_questions(document.id, result.data)
+    return QuestionGenerationResponse(document_id=document.id, questions=result.data, **_meta_from_result(result))
 
 
 @router.post("/review", response_model=TestReviewResponse)
@@ -141,22 +150,32 @@ def review_test(payload: TestReviewRequest) -> TestReviewResponse:
 
     expected = {item.id: {"answer": item.answer, "topic": item.topic} for item in questions}
     answers = {item.question_id: item.user_answer for item in payload.answers}
-    reviews, total_score, weak_topics, recommended_difficulty = EvaluationService.review_answers(answers, expected)
+    evaluation = EvaluationService.review_answers(answers, expected)
 
     return TestReviewResponse(
         document_id=payload.document_id,
-        total_score=total_score,
-        reviews=reviews,
-        weak_topics=weak_topics,
-        recommended_difficulty=recommended_difficulty,
+        total_score=evaluation.total_score,
+        reviews=evaluation.reviews,
+        weak_topics=evaluation.weak_topics,
+        recommended_difficulty=evaluation.recommended_difficulty,
+        source=evaluation.source,
+        scoring_source=evaluation.scoring_source,
+        weak_topics_source=evaluation.weak_topics_source,
+        llm_error=evaluation.llm_error,
+        fallback_reason=evaluation.fallback_reason,
     )
 
 
 @router.post("/doubt", response_model=DoubtResponse)
 def resolve_doubt(payload: DoubtRequest) -> DoubtResponse:
     document = _resolve_document(payload.document_id)
-    answer = AIService.answer_doubt(document.text, payload.question)
-    return DoubtResponse(document_id=document.id, question=payload.question, answer=answer)
+    result = AIService.answer_doubt(document.text, payload.question)
+    return DoubtResponse(
+        document_id=document.id,
+        question=payload.question,
+        answer=result.data,
+        **_meta_from_result(result),
+    )
 
 
 @router.get("/documents/{document_id}/chapters", response_model=DocumentChaptersResponse)
