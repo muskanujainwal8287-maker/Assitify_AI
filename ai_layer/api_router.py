@@ -52,7 +52,9 @@ def _resolve_document(document_id: str) -> StoredDocument:
 )
 async def upload_document(
     file: UploadFile | None = File(default=None, description="Document file to parse (optional)."),
-    text: str | None = Form(default=None, description="Plain text to store/append (optional)."),
+    text: str | None = Form(default=None, description="Plain text to store/append (optional).", 
+    examples=[""],
+    ),
 ) -> DocumentUploadResponse:
     has_file = file is not None
     has_text = bool(text and text.strip())
