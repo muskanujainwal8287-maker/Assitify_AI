@@ -19,6 +19,9 @@ class IngestionService:
         if not text:
             document.chapters = []
             document.chunks = []
+            from ai_layer.vector_pipeline import index_document
+
+            index_document(document)
             return document
 
         chapters = IngestionService._split_into_chapters(text)
@@ -27,6 +30,9 @@ class IngestionService:
         )
         document.chapters = chapters
         document.chunks = chunks
+        from ai_layer.vector_pipeline import index_document
+
+        index_document(document)
         return document
 
     @staticmethod

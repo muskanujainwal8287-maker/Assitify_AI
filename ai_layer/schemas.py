@@ -14,6 +14,14 @@ class DocumentUploadResponse(BaseModel):
     filename: str
     detected_type: str
     extracted_text_preview: str
+    extracted_text: str = ""
+
+
+class DocumentRestoreRequest(BaseModel):
+    document_id: str
+    filename: str
+    detected_type: str = "text/plain"
+    text: str = Field(min_length=1)
 
 
 class DocumentRequest(BaseModel):
@@ -75,6 +83,7 @@ class AnswerSubmission(BaseModel):
 class TestReviewRequest(BaseModel):
     document_id: str
     answers: list[AnswerSubmission]
+    questions: list[Question] | None = None
 
 
 class AnswerReview(BaseModel):

@@ -10,6 +10,10 @@ class InMemoryDocumentRepository(DocumentRepository):
     def get_document(self, document_id: str) -> StoredDocument | None:
         return store.documents.get(document_id)
 
+    def delete_document(self, document_id: str) -> None:
+        store.documents.pop(document_id, None)
+        store.questions_by_document.pop(document_id, None)
+
     def save_questions(self, document_id: str, questions: list[Question]) -> None:
         store.questions_by_document[document_id] = questions
 

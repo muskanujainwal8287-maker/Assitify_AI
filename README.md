@@ -54,7 +54,7 @@ Elsewhere in the repo:
 - `ai_layer/config.py`
   - Environment-backed settings (upload dir, OpenAI key, model, etc.).
 - `start.py`
-  - Convenience launcher for `uvicorn ai_layer.main:app --reload`.
+  - Launcher for AI (`:8000`) and/or Backend (`:8001`): `python start.py` | `python start.py ai` | `python start.py backend`.
 
 ## Dependencies
 
@@ -76,7 +76,8 @@ The app reads settings from environment variables (via `.env`):
 
 - `OPENAI_API_KEY` - enables LLM features.
 - `LLM_MODEL` - model passed to OpenAI responses API.
-- `UPLOAD_DIR` - upload storage directory (default: `uploads`).
+- `REDIS_URL` - Redis URL for AI-layer document cache (falls back to in-memory if unreachable).
+- `DATABASE_URL` - Postgres URL used by the backend for durable document storage.
 - `ALLOW_ORIGINS` - CORS origin list.
 
 If `OPENAI_API_KEY` is missing, services use local fallback logic where implemented.

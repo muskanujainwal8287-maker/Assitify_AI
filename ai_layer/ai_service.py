@@ -274,7 +274,8 @@ class AIService:
         prepared_content = AIService._prepare_content_for_prompt(text)
         prompt = (
             "You are a teaching assistant.\n"
-            "Answer the student's doubt using only the provided content.\n"
+            "Answer the student's doubt using only the provided content "
+            "(retrieved passages and/or document excerpts).\n"
             "If content is insufficient, explicitly say what is missing.\n"
             "Keep the response concise, accurate, and easy to understand.\n"
             "Read the full content and summarize coverage across beginning, middle, and end.\n"

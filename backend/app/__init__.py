@@ -1,0 +1,1 @@
+"""Assitify backend (BFF) package."""

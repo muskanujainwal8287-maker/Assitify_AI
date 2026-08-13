@@ -29,4 +29,12 @@ def health_check() -> dict:
 
 @app.get("/health/ai")
 def ai_health_check() -> dict:
-    return {"status": "ok", **openai_config_status()}
+    from ai_layer.vector_store import is_ready
+
+    return {
+        "status": "ok",
+        **openai_config_status(),
+        "qdrant_url": settings.qdrant_url,
+        "qdrant_ready": is_ready(),
+        "embed_model": settings.embed_model,
+    }

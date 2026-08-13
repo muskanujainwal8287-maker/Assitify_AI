@@ -1,20 +1,19 @@
 import uuid
-from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 
 from ai_layer.ai_service import AIService
-from ai_layer.config import settings
 from ai_layer.evaluation_service import EvaluationService
 from ai_layer.ingestion_service import IngestionService
 from ai_layer.parser_service import ParserService
 from ai_layer.repositories.provider import get_repository
-from ai_layer.schemas import DocumentUploadResponse
 from ai_layer.schemas import (
     ChunkInfo,
     ChapterInfo,
     DocumentChaptersResponse,
     DocumentChunksResponse,
+    DocumentRestoreRequest,
+    DocumentUploadResponse,
     DoubtRequest,
     DoubtResponse,
     KeyPointRecommendationResponse,
@@ -77,21 +76,20 @@ async def upload_document(
             document_id=document_id,
             filename="pasted_text.txt",
             detected_type="text/plain",
-            extracted_text_preview=cleaned_text[:5000],
+            extracted_text_preview=cleaned_text[:500],
+            extracted_text=cleaned_text,
         )
 
     if not file or not file.filename:
         raise HTTPException(status_code=400, detail="Filename is required.")
 
-    upload_directory = Path(settings.upload_dir)
-    upload_directory.mkdir(parents=True, exist_ok=True)
     document_id = str(uuid.uuid4())
-    file_path = upload_directory / f"{document_id}_{file.filename}"
-
     content = await file.read()
-    file_path.write_bytes(content)
-
-    parsed_text, detected_type = ParserService.parse(file_path=file_path, content_type=file.content_type or "")
+    parsed_text, detected_type = ParserService.parse_bytes(
+        content=content,
+        filename=file.filename,
+        content_type=file.content_type or "",
+    )
     combined_text = parsed_text.strip() if parsed_text else ""
     if has_text and combined_text:
         combined_text = f"{combined_text}\n\n{cleaned_text}"
@@ -113,7 +111,44 @@ async def upload_document(
         filename=file.filename,
         detected_type=stored_type,
         extracted_text_preview=combined_text[:500],
+        extracted_text=combined_text,
     )
+
+
+@router.post("/documents/restore", response_model=DocumentUploadResponse)
+def restore_document(payload: DocumentRestoreRequest) -> DocumentUploadResponse:
+    document_id = payload.document_id.strip()
+    text = payload.text.strip()
+    if not document_id or not text:
+        raise HTTPException(status_code=400, detail="document_id and text are required.")
+
+    document = StoredDocument(
+        id=document_id,
+        filename=payload.filename.strip() or "restored.txt",
+        detected_type=payload.detected_type or "text/plain",
+        text=text,
+    )
+    IngestionService.ingest_document(document)
+    repo.save_document(document)
+    return DocumentUploadResponse(
+        document_id=document.id,
+        filename=document.filename,
+        detected_type=document.detected_type,
+        extracted_text_preview=text[:500],
+        extracted_text=text,
+    )
+
+
+@router.delete("/documents/{document_id}")
+def delete_document(document_id: str) -> dict[str, str]:
+    document = repo.get_document(document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    repo.delete_document(document_id)
+    from ai_layer.vector_store import delete_document_vectors
+
+    delete_document_vectors(document_id)
+    return {"status": "deleted", "document_id": document_id}
 
 
 @router.get("/summary", response_model=SummaryResponse)
@@ -146,9 +181,12 @@ def generate_questions(payload: QuestionGenerationRequest) -> QuestionGeneration
 
 @router.post("/review", response_model=TestReviewResponse)
 def review_test(payload: TestReviewRequest) -> TestReviewResponse:
-    questions = repo.get_questions(payload.document_id)
+    questions = payload.questions or repo.get_questions(payload.document_id)
     if not questions:
         raise HTTPException(status_code=404, detail="No generated questions found for this document.")
+
+    if payload.questions:
+        repo.save_questions(payload.document_id, payload.questions)
 
     expected = {item.id: {"answer": item.answer, "topic": item.topic} for item in questions}
     answers = {item.question_id: item.user_answer for item in payload.answers}
@@ -171,7 +209,10 @@ def review_test(payload: TestReviewRequest) -> TestReviewResponse:
 @router.post("/doubt", response_model=DoubtResponse)
 def resolve_doubt(payload: DoubtRequest) -> DoubtResponse:
     document = _resolve_document(payload.document_id)
-    result = AIService.answer_doubt(document.text, payload.question)
+    from ai_layer.vector_pipeline import retrieve_context
+
+    context = retrieve_context(document.id, payload.question, document.text)
+    result = AIService.answer_doubt(context, payload.question)
     return DoubtResponse(
         document_id=document.id,
         question=payload.question,
