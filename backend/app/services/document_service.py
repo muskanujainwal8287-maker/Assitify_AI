@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from backend.app.db.models import Attempt, AttemptAnswer, Document, Question, User
+from backend.app.db.models import Attempt, AttemptAnswer, Document, DoubtMessage, DoubtSession, Question, User
 from backend.app.schemas import (
     AnswerReviewOut,
     AttemptDetailResponse,
@@ -21,13 +22,20 @@ from backend.app.schemas import (
     DocumentListResponse,
     DocumentUploadResponse,
     DoubtResponse,
+    DoubtSessionDetailResponse,
+    DoubtSessionListItem,
+    DoubtSessionListResponse,
+    ChatMessageOut,
     KeyPointsResponse,
+    NotesResponse,
     QuestionGenerationRequest,
     QuestionGenerationResponse,
     QuestionOut,
+    ChapterNotes,
     SummaryResponse,
     TestReviewRequest,
     TestReviewResponse,
+    TopicKeyPointsResponse,
     WeakTopicOut,
 )
 from backend.app.services import cache as document_cache
@@ -66,7 +74,7 @@ def upload_document(
     text: str | None = None,
     user: User | None = None,
 ) -> DocumentUploadResponse:
-    has_file = content is not None and bool(filename)
+    has_file = bool(filename) and content is not None and len(content) > 0
     has_text = bool(text and text.strip())
     if not has_file and not has_text:
         raise HTTPException(status_code=400, detail="Provide file, text, or both.")
@@ -225,6 +233,82 @@ def get_keypoints(
     response = KeyPointsResponse(
         document_id=document.id,
         key_points=result.get("key_points") or [],
+        source=result.get("source", "fallback"),
+        llm_error=result.get("llm_error"),
+        fallback_reason=result.get("fallback_reason"),
+    )
+    document_cache.set_json(cache_key, response.model_dump(mode="json"))
+    return response
+
+
+def get_topic_keypoints(
+    db: Session,
+    document_id: UUID,
+    *,
+    topic: str,
+    user: User | None = None,
+) -> TopicKeyPointsResponse:
+    document = _get_document_or_404(db, document_id, user)
+    chosen_topic = topic.strip()
+    cache_key = document_cache.topic_keypoints_key(str(document.id), topic=chosen_topic)
+    cached = document_cache.get_json(cache_key)
+    if isinstance(cached, dict) and "key_points" in cached:
+        return TopicKeyPointsResponse(
+            document_id=document.id,
+            topic=cached.get("topic") or chosen_topic,
+            key_points=cached.get("key_points") or [],
+            source=cached.get("source", "fallback"),
+            llm_error=cached.get("llm_error"),
+            fallback_reason=cached.get("fallback_reason") or "redis_cache",
+        )
+
+    _ensure_ai_document(document)
+    result = ai_client.topic_keypoints(str(document.id), topic=chosen_topic)
+    response = TopicKeyPointsResponse(
+        document_id=document.id,
+        topic=result.get("topic") or chosen_topic,
+        key_points=result.get("key_points") or [],
+        source=result.get("source", "fallback"),
+        llm_error=result.get("llm_error"),
+        fallback_reason=result.get("fallback_reason"),
+    )
+    document_cache.set_json(cache_key, response.model_dump(mode="json"))
+    return response
+
+
+def get_notes(
+    db: Session,
+    document_id: UUID,
+    *,
+    chapter_id: str,
+    topic: str | None = None,
+    user: User | None = None,
+) -> NotesResponse:
+    document = _get_document_or_404(db, document_id, user)
+    cache_key = document_cache.notes_key(
+        str(document.id),
+        chapter_id=chapter_id,
+        topic=topic,
+    )
+    cached = document_cache.get_json(cache_key)
+    if isinstance(cached, dict) and cached.get("chapters"):
+        return NotesResponse(
+            document_id=document.id,
+            chapters=[ChapterNotes(**item) for item in cached.get("chapters") or []],
+            source=cached.get("source", "fallback"),
+            llm_error=cached.get("llm_error"),
+            fallback_reason=cached.get("fallback_reason") or "redis_cache",
+        )
+
+    _ensure_ai_document(document)
+    result = ai_client.notes(
+        str(document.id),
+        chapter_id=chapter_id,
+        topic=topic,
+    )
+    response = NotesResponse(
+        document_id=document.id,
+        chapters=[ChapterNotes(**item) for item in (result.get("chapters") or [])],
         source=result.get("source", "fallback"),
         llm_error=result.get("llm_error"),
         fallback_reason=result.get("fallback_reason"),
@@ -416,18 +500,213 @@ def resolve_doubt(
     document_id: UUID,
     question: str,
     user: User | None = None,
+    session_id: UUID | None = None,
 ) -> DoubtResponse:
     document = _get_document_or_404(db, document_id, user)
+    session = _get_or_create_doubt_session(db, document, user, session_id)
+    history_rows = db.scalars(
+        select(DoubtMessage)
+        .where(DoubtMessage.session_id == session.id)
+        .order_by(DoubtMessage.created_at.asc())
+    ).all()
+    history = [{"role": row.role, "content": row.content} for row in history_rows[-10:]]
+
     _ensure_ai_document(document)
-    result = ai_client.doubt({"document_id": str(document.id), "question": question})
+    result = ai_client.doubt(
+        {
+            "document_id": str(document.id),
+            "question": question,
+            "history": history,
+        }
+    )
+    answer = result["answer"]
+
+    db.add(DoubtMessage(session_id=session.id, role="user", content=question))
+    db.add(DoubtMessage(session_id=session.id, role="assistant", content=answer))
+    if session.title == "Doubt chat":
+        session.title = question[:80]
+    session.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(session)
+
+    messages = db.scalars(
+        select(DoubtMessage)
+        .where(DoubtMessage.session_id == session.id)
+        .order_by(DoubtMessage.created_at.asc())
+    ).all()
     return DoubtResponse(
         document_id=document.id,
+        session_id=session.id,
         question=question,
-        answer=result["answer"],
+        answer=answer,
+        messages=[
+            ChatMessageOut(role=item.role, content=item.content, created_at=item.created_at)
+            for item in messages
+        ],
         source=result.get("source", "fallback"),
         llm_error=result.get("llm_error"),
         fallback_reason=result.get("fallback_reason"),
     )
+
+
+def _get_or_create_doubt_session(
+    db: Session,
+    document: Document,
+    user: User | None,
+    session_id: UUID | None,
+) -> DoubtSession:
+    if session_id is not None:
+        session = db.get(DoubtSession, session_id)
+        if (
+            not session
+            or session.document_id != document.id
+            or (user is not None and session.user_id is not None and session.user_id != user.id)
+        ):
+            raise HTTPException(status_code=404, detail="Doubt session not found.")
+        return session
+
+    session = DoubtSession(
+        document_id=document.id,
+        user_id=user.id if user else None,
+        title="Doubt chat",
+    )
+    db.add(session)
+    db.flush()
+    return session
+
+
+def create_doubt_session(
+    db: Session,
+    document_id: UUID,
+    user: User | None = None,
+    *,
+    title: str | None = None,
+) -> DoubtSessionDetailResponse:
+    document = _get_document_or_404(db, document_id, user)
+    _ensure_ai_document(document)
+    opener = ai_client.start_doubt(str(document.id))
+    opening_message = (opener.get("message") or "").strip() or (
+        "Hi! Let's study this material together. What would you like to start with?"
+    )
+
+    session = DoubtSession(
+        document_id=document.id,
+        user_id=user.id if user else None,
+        title=(title or "").strip() or "Question session",
+    )
+    db.add(session)
+    db.flush()
+    db.add(DoubtMessage(session_id=session.id, role="assistant", content=opening_message))
+    session.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(session)
+
+    return get_doubt_session(db, document_id, session.id, user)
+
+
+def list_doubt_sessions(
+    db: Session,
+    document_id: UUID,
+    user: User | None = None,
+) -> DoubtSessionListResponse:
+    document = _get_document_or_404(db, document_id, user)
+    items = _list_doubt_session_items(db, document, user)
+    if not items:
+        created = create_doubt_session(db, document_id, user)
+        items = [
+            DoubtSessionListItem(
+                session_id=created.session_id,
+                document_id=created.document_id,
+                title=created.title,
+                message_count=0,
+                created_at=created.created_at,
+                updated_at=created.updated_at,
+            )
+        ]
+    return DoubtSessionListResponse(document_id=document.id, sessions=items, total=len(items))
+
+
+def _list_doubt_session_items(
+    db: Session,
+    document: Document,
+    user: User | None,
+) -> list[DoubtSessionListItem]:
+    query = (
+        select(
+            DoubtSession,
+            func.count(DoubtMessage.id).label("message_count"),
+        )
+        .outerjoin(DoubtMessage, DoubtMessage.session_id == DoubtSession.id)
+        .where(DoubtSession.document_id == document.id)
+        .group_by(DoubtSession.id)
+        .order_by(DoubtSession.updated_at.desc())
+    )
+    if user is not None:
+        query = query.where(DoubtSession.user_id == user.id)
+    rows = db.execute(query).all()
+    return [
+        DoubtSessionListItem(
+            session_id=session.id,
+            document_id=session.document_id,
+            title=session.title,
+            message_count=int(count or 0),
+            created_at=session.created_at,
+            updated_at=session.updated_at,
+        )
+        for session, count in rows
+    ]
+
+
+def get_doubt_session(
+    db: Session,
+    document_id: UUID,
+    session_id: UUID,
+    user: User | None = None,
+) -> DoubtSessionDetailResponse:
+    document = _get_document_or_404(db, document_id, user)
+    session = db.get(DoubtSession, session_id)
+    if (
+        not session
+        or session.document_id != document.id
+        or (user is not None and session.user_id is not None and session.user_id != user.id)
+    ):
+        raise HTTPException(status_code=404, detail="Doubt session not found.")
+
+    messages = db.scalars(
+        select(DoubtMessage)
+        .where(DoubtMessage.session_id == session.id)
+        .order_by(DoubtMessage.created_at.asc())
+    ).all()
+    return DoubtSessionDetailResponse(
+        session_id=session.id,
+        document_id=session.document_id,
+        title=session.title,
+        messages=[
+            ChatMessageOut(role=item.role, content=item.content, created_at=item.created_at)
+            for item in messages
+        ],
+        created_at=session.created_at,
+        updated_at=session.updated_at,
+    )
+
+
+def delete_doubt_session(
+    db: Session,
+    document_id: UUID,
+    session_id: UUID,
+    user: User | None = None,
+) -> dict[str, str]:
+    document = _get_document_or_404(db, document_id, user)
+    session = db.get(DoubtSession, session_id)
+    if (
+        not session
+        or session.document_id != document.id
+        or (user is not None and session.user_id is not None and session.user_id != user.id)
+    ):
+        raise HTTPException(status_code=404, detail="Doubt session not found.")
+    db.delete(session)
+    db.commit()
+    return {"status": "deleted", "session_id": str(session_id)}
 
 
 def get_chapters(

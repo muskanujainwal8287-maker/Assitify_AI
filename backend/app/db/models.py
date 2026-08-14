@@ -45,6 +45,9 @@ class Document(Base):
     attempts: Mapped[list[Attempt]] = relationship(
         back_populates="document", cascade="all, delete-orphan"
     )
+    doubt_sessions: Mapped[list[DoubtSession]] = relationship(
+        back_populates="document", cascade="all, delete-orphan"
+    )
 
 
 class Question(Base):
@@ -102,3 +105,42 @@ class AttemptAnswer(Base):
     topic: Mapped[str] = mapped_column(String(255), nullable=False, default="General")
 
     attempt: Mapped[Attempt] = relationship(back_populates="answers")
+
+
+class DoubtSession(Base):
+    __tablename__ = "doubt_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False, default="Doubt chat")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    document: Mapped[Document] = relationship(back_populates="doubt_sessions")
+    messages: Mapped[list[DoubtMessage]] = relationship(
+        back_populates="session", cascade="all, delete-orphan", order_by="DoubtMessage.created_at"
+    )
+
+
+class DoubtMessage(Base):
+    __tablename__ = "doubt_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("doubt_sessions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    session: Mapped[DoubtSession] = relationship(back_populates="messages")

@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     embed_model: str = "text-embedding-3-small"
     jwt_secret: str = "change-me-in-production-assitify"
     jwt_algorithm: str = "HS256"
-    jwt_expire_minutes: int = 60
+    jwt_expire_minutes: int = 60*24*7
     auth_required: bool = True
 
     model_config = SettingsConfigDict(

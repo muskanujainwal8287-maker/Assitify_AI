@@ -23,6 +23,8 @@ The AI layer supports:
 - chapter/chunk ingestion for phase-1 retrieval readiness
 - summary generation (auto-sized based on content length)
 - key-point recommendation
+- topic-wise key points
+- chapter-wise / topic-wise revision notes
 - objective/subjective question generation
 - answer review with weak-topic detection and next difficulty recommendation
 - doubt answering grounded in provided document/text
@@ -94,6 +96,13 @@ All routes below are exposed from the AI router:
 - `GET /keypoints?document_id=<id>`
   - Input: uploaded `document_id`.
   - Output: recommended key points.
+- `GET /topic-keypoints?document_id=<id>&topic=<topic>`
+  - Required: `topic`.
+  - Output: key points for that topic only.
+- `GET /notes?document_id=<id>&chapter_id=<id>`
+  - Required: `chapter_id` from `/documents/{id}/chapters`.
+  - Optional: `topic`.
+  - Output: that chapter’s topics, each with bullet-point notes.
 - `POST /questions`
   - Input: `document_id`, `question_type`, `difficulty`, `count`, optional `topic`.
   - Output: generated question set.
@@ -101,8 +110,8 @@ All routes below are exposed from the AI router:
   - Input: `document_id` + submitted answers.
   - Output: per-question review, total score, weak topics, recommended difficulty.
 - `POST /doubt`
-  - Input: `document_id` + user `question`.
-  - Output: AI-generated doubt response.
+  - Input: `document_id`, `question`, optional `history` of `{role, content}` turns.
+  - Output: AI-generated reply that can continue a tutoring chat.
 - `GET /documents/{document_id}/chapters`
   - Output: chapter boundaries and chunk counts.
 - `GET /documents/{document_id}/chunks?chapter_id=<id>&limit=50`
@@ -136,6 +145,7 @@ Upload content first via `/upload`, then reuse returned `document_id` for summar
 - Includes fallback behavior for:
   - summary generation
   - key-point extraction
+  - chapter/topic notes
   - question generation
 - Doubt answering currently requires OpenAI key for meaningful responses.
 - Summary length and key-point count are auto-selected from content length.
@@ -155,7 +165,7 @@ Upload content first via `/upload`, then reuse returned `document_id` for summar
 ## Typical flow
 
 1. Upload document via `/upload`.
-2. Use `document_id` for `/summary`, `/keypoints`, and `/questions`.
+2. Use `document_id` for `/summary`, `/keypoints`, `/notes`, and `/questions`.
 3. Submit answers to `/review`.
-4. Use `/doubt` for targeted follow-up explanations.
+4. Use `/doubt` for a two-way tutoring chat (send `history` on follow-up turns).
 5. Inspect chapter/chunk structure via `/documents/{id}/chapters` and `/documents/{id}/chunks`.

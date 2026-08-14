@@ -107,6 +107,29 @@ class KeyPointsResponse(AIResponseMeta):
     key_points: list[str]
 
 
+class TopicKeyPointsResponse(AIResponseMeta):
+    document_id: UUID
+    topic: str
+    key_points: list[str]
+
+
+class TopicNotes(BaseModel):
+    topic: str
+    notes: list[str] = []
+
+
+class ChapterNotes(BaseModel):
+    title: str
+    chapter_id: str | None = None
+    chapter_number: int | None = None
+    topics: list[TopicNotes] = []
+
+
+class NotesResponse(AIResponseMeta):
+    document_id: UUID
+    chapters: list[ChapterNotes]
+
+
 class QuestionOut(BaseModel):
     id: str
     prompt: str
@@ -167,12 +190,45 @@ class TestReviewResponse(AIResponseMeta):
 
 class DoubtRequest(BaseModel):
     question: str = Field(min_length=3, max_length=2000)
+    session_id: UUID | None = None
+
+
+class ChatMessageOut(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+    created_at: datetime
 
 
 class DoubtResponse(AIResponseMeta):
     document_id: UUID
+    session_id: UUID
     question: str
     answer: str
+    messages: list[ChatMessageOut] = []
+
+
+class DoubtSessionListItem(BaseModel):
+    session_id: UUID
+    document_id: UUID
+    title: str
+    message_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class DoubtSessionListResponse(BaseModel):
+    document_id: UUID
+    sessions: list[DoubtSessionListItem]
+    total: int
+
+
+class DoubtSessionDetailResponse(BaseModel):
+    session_id: UUID
+    document_id: UUID
+    title: str
+    messages: list[ChatMessageOut]
+    created_at: datetime
+    updated_at: datetime
 
 
 class ChapterInfo(BaseModel):

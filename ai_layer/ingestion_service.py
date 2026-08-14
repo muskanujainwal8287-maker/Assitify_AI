@@ -24,7 +24,7 @@ class IngestionService:
             index_document(document)
             return document
 
-        chapters = IngestionService._split_into_chapters(text)
+        chapters = IngestionService._split_into_chapters(text, document.id)
         chunks = IngestionService._build_chunks(
             text=text, document_id=document.id, chapters=chapters, chunk_size=chunk_size, overlap=overlap
         )
@@ -36,12 +36,16 @@ class IngestionService:
         return document
 
     @staticmethod
-    def _split_into_chapters(text: str) -> list[StoredChapter]:
+    def _chapter_id(document_id: str, chapter_number: int) -> str:
+        return str(uuid.uuid5(uuid.NAMESPACE_URL, f"assitify:{document_id}:chapter:{chapter_number}"))
+
+    @staticmethod
+    def _split_into_chapters(text: str, document_id: str) -> list[StoredChapter]:
         matches = list(IngestionService.CHAPTER_HEADING_PATTERN.finditer(text))
         if not matches:
             return [
                 StoredChapter(
-                    id=str(uuid.uuid4()),
+                    id=IngestionService._chapter_id(document_id, 1),
                     title="Full Document",
                     chapter_number=1,
                     start_char=0,
@@ -58,7 +62,7 @@ class IngestionService:
             title = heading if heading else f"Chapter {chapter_number}"
             chapters.append(
                 StoredChapter(
-                    id=str(uuid.uuid4()),
+                    id=IngestionService._chapter_id(document_id, chapter_number),
                     title=title[:150],
                     chapter_number=chapter_number,
                     start_char=start_char,

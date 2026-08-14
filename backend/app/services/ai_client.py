@@ -54,7 +54,7 @@ class AIClient:
     ) -> dict[str, Any]:
         files = None
         data: dict[str, str] = {}
-        if content is not None and filename:
+        if content and filename:
             files = {"file": (filename, content, content_type or "application/octet-stream")}
         if text:
             data["text"] = text
@@ -91,6 +91,27 @@ class AIClient:
         response = self._request("GET", "/api/ai/keypoints", params={"document_id": document_id})
         return response.json()
 
+    def topic_keypoints(self, document_id: str, *, topic: str) -> dict[str, Any]:
+        response = self._request(
+            "GET",
+            "/api/ai/topic-keypoints",
+            params={"document_id": document_id, "topic": topic},
+        )
+        return response.json()
+
+    def notes(
+        self,
+        document_id: str,
+        *,
+        chapter_id: str,
+        topic: str | None = None,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {"document_id": document_id, "chapter_id": chapter_id}
+        if topic:
+            params["topic"] = topic
+        response = self._request("GET", "/api/ai/notes", params=params)
+        return response.json()
+
     def questions(self, payload: dict[str, Any]) -> dict[str, Any]:
         response = self._request("POST", "/api/ai/questions", json=payload)
         return response.json()
@@ -101,6 +122,10 @@ class AIClient:
 
     def doubt(self, payload: dict[str, Any]) -> dict[str, Any]:
         response = self._request("POST", "/api/ai/doubt", json=payload)
+        return response.json()
+
+    def start_doubt(self, document_id: str) -> dict[str, Any]:
+        response = self._request("POST", "/api/ai/doubt/start", json={"document_id": document_id})
         return response.json()
 
     def chapters(self, document_id: str) -> dict[str, Any]:

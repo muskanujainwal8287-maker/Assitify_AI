@@ -53,6 +53,29 @@ class KeyPointRecommendationResponse(AIResponseMeta):
     key_points: list[str]
 
 
+class TopicKeyPointsResponse(AIResponseMeta):
+    document_id: str
+    topic: str
+    key_points: list[str]
+
+
+class TopicNotes(BaseModel):
+    topic: str
+    notes: list[str] = []
+
+
+class ChapterNotes(BaseModel):
+    title: str
+    chapter_id: str | None = None
+    chapter_number: int | None = None
+    topics: list[TopicNotes] = []
+
+
+class NotesResponse(AIResponseMeta):
+    document_id: str
+    chapters: list[ChapterNotes]
+
+
 class QuestionGenerationRequest(DocumentRequest):
     topic: str | None = None
     question_type: str = Field(default="objective", pattern="^(objective|subjective)$")
@@ -113,14 +136,30 @@ class TestReviewResponse(AIResponseMeta):
     weak_topics_source: Literal["openai", "fallback"] = "fallback"
 
 
+class ChatTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=8000)
+
+
 class DoubtRequest(DocumentRequest):
     question: str = Field(min_length=3, max_length=2000)
+    history: list[ChatTurn] = []
 
 
 class DoubtResponse(AIResponseMeta):
     document_id: str
     question: str
     answer: str
+    history: list[ChatTurn] = []
+
+
+class DoubtStartRequest(DocumentRequest):
+    pass
+
+
+class DoubtStartResponse(AIResponseMeta):
+    document_id: str
+    message: str
 
 
 class ChapterInfo(BaseModel):

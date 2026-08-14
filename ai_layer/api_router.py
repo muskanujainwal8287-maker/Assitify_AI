@@ -1,4 +1,5 @@
 import uuid
+from typing import Annotated
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 
@@ -16,10 +17,14 @@ from ai_layer.schemas import (
     DocumentUploadResponse,
     DoubtRequest,
     DoubtResponse,
+    DoubtStartRequest,
+    DoubtStartResponse,
     KeyPointRecommendationResponse,
+    NotesResponse,
     QuestionGenerationRequest,
     QuestionGenerationResponse,
     SummaryResponse,
+    TopicKeyPointsResponse,
 )
 from ai_layer.schemas import TestReviewRequest, TestReviewResponse
 from ai_layer.llm_result import LLMResult
@@ -45,22 +50,59 @@ def _resolve_document(document_id: str) -> StoredDocument:
     raise HTTPException(status_code=404, detail="Document not found. Provide a valid document_id.")
 
 
+def _find_chapter(document: StoredDocument, chapter_ref: str):
+    ref = chapter_ref.strip()
+    if not ref:
+        return None
+    for chapter in document.chapters:
+        if chapter.id == ref:
+            return chapter
+    if ref.isdigit():
+        number = int(ref)
+        for chapter in document.chapters:
+            if chapter.chapter_number == number:
+                return chapter
+    ref_l = ref.lower()
+    matches = [chapter for chapter in document.chapters if chapter.title.lower() == ref_l]
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
+async def _read_optional_upload(
+    file: UploadFile | None,
+) -> tuple[bytes | None, str | None, str | None]:
+    if file is None:
+        return None, None, None
+    filename = (file.filename or "").strip() or None
+    content = await file.read()
+    if not content:
+        if filename:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+        return None, None, None
+    return content, filename or "uploaded_file", file.content_type
+
+
 @router.post(
     "/upload",
     response_model=DocumentUploadResponse,
 )
 async def upload_document(
-    file: UploadFile | None = File(default=None, description="Document file to parse (optional)."),
-    text: str | None = Form(default=None, description="Plain text to store/append (optional).", 
-    examples=[""],
-    ),
+    file: Annotated[
+        UploadFile | None,
+        File(description="Document file to parse (optional)."),
+    ] = None,
+    text: Annotated[
+        str | None,
+        Form(description="Plain text to store/append (optional)."),
+    ] = None,
 ) -> DocumentUploadResponse:
-    has_file = file is not None
-    has_text = bool(text and text.strip())
+    content, filename, content_type = await _read_optional_upload(file)
+    has_file = content is not None
+    cleaned_text = (text or "").strip()
+    has_text = bool(cleaned_text)
     if not has_file and not has_text:
         raise HTTPException(status_code=400, detail="Provide file, text, or both.")
-
-    cleaned_text = text.strip() if text else ""
 
     if not has_file:
         document_id = str(uuid.uuid4())
@@ -80,15 +122,11 @@ async def upload_document(
             extracted_text=cleaned_text,
         )
 
-    if not file or not file.filename:
-        raise HTTPException(status_code=400, detail="Filename is required.")
-
     document_id = str(uuid.uuid4())
-    content = await file.read()
     parsed_text, detected_type = ParserService.parse_bytes(
-        content=content,
-        filename=file.filename,
-        content_type=file.content_type or "",
+        content=content or b"",
+        filename=filename or "uploaded_file",
+        content_type=content_type or "",
     )
     combined_text = parsed_text.strip() if parsed_text else ""
     if has_text and combined_text:
@@ -102,13 +140,16 @@ async def upload_document(
     stored_type = f"{detected_type}+text" if has_text else detected_type
 
     document = StoredDocument(
-        id=document_id, filename=file.filename, detected_type=stored_type, text=combined_text
+        id=document_id,
+        filename=filename or "uploaded_file",
+        detected_type=stored_type,
+        text=combined_text,
     )
     IngestionService.ingest_document(document)
     repo.save_document(document)
     return DocumentUploadResponse(
         document_id=document_id,
-        filename=file.filename,
+        filename=filename or "uploaded_file",
         detected_type=stored_type,
         extracted_text_preview=combined_text[:500],
         extracted_text=combined_text,
@@ -121,6 +162,19 @@ def restore_document(payload: DocumentRestoreRequest) -> DocumentUploadResponse:
     text = payload.text.strip()
     if not document_id or not text:
         raise HTTPException(status_code=400, detail="document_id and text are required.")
+
+    existing = repo.get_document(document_id)
+    if existing and existing.text.strip() == text:
+        if not existing.chapters:
+            IngestionService.ingest_document(existing)
+            repo.save_document(existing)
+        return DocumentUploadResponse(
+            document_id=existing.id,
+            filename=existing.filename,
+            detected_type=existing.detected_type,
+            extracted_text_preview=existing.text[:500],
+            extracted_text=existing.text,
+        )
 
     document = StoredDocument(
         id=document_id,
@@ -163,6 +217,61 @@ def generate_keypoints(document_id: str = Query(...)) -> KeyPointRecommendationR
     document = _resolve_document(document_id)
     result = AIService.recommend_key_points(document.text)
     return KeyPointRecommendationResponse(document_id=document.id, key_points=result.data, **_meta_from_result(result))
+
+
+@router.get("/topic-keypoints", response_model=TopicKeyPointsResponse)
+def generate_topic_keypoints(
+    document_id: str = Query(...),
+    topic: str = Query(..., min_length=2, max_length=255, description="Required topic name."),
+) -> TopicKeyPointsResponse:
+    document = _resolve_document(document_id)
+    chosen_topic = topic.strip()
+    result = AIService.recommend_topic_key_points(document.text, chosen_topic)
+    return TopicKeyPointsResponse(
+        document_id=document.id,
+        topic=chosen_topic,
+        key_points=result.data,
+        **_meta_from_result(result),
+    )
+
+
+@router.get("/notes", response_model=NotesResponse)
+def generate_notes(
+    document_id: str = Query(...),
+    chapter_id: str = Query(
+        ...,
+        description="Required. chapter_id from GET /chapters, or chapter_number like 1.",
+    ),
+    topic: str | None = Query(default=None),
+) -> NotesResponse:
+    document = _resolve_document(document_id)
+    if not document.chapters:
+        IngestionService.ingest_document(document)
+        repo.save_document(document)
+
+    chapter = _find_chapter(document, chapter_id.strip())
+    if not chapter:
+        raise HTTPException(
+            status_code=404,
+            detail="Chapter not found. List chapters with GET /documents/{document_id}/chapters, then pass chapter_id or chapter_number.",
+        )
+
+    topic_filter = topic.strip() if topic else ""
+    sections = [
+        {
+            "title": chapter.title,
+            "text": document.text[chapter.start_char : chapter.end_char],
+            "chapter_id": chapter.id,
+            "chapter_number": chapter.chapter_number,
+        }
+    ]
+
+    result = AIService.generate_notes(sections, topic=topic_filter or None)
+    return NotesResponse(
+        document_id=document.id,
+        chapters=result.data,
+        **_meta_from_result(result),
+    )
 
 
 @router.post("/questions", response_model=QuestionGenerationResponse)
@@ -211,12 +320,34 @@ def resolve_doubt(payload: DoubtRequest) -> DoubtResponse:
     document = _resolve_document(payload.document_id)
     from ai_layer.vector_pipeline import retrieve_context
 
-    context = retrieve_context(document.id, payload.question, document.text)
-    result = AIService.answer_doubt(context, payload.question)
+    history = [{"role": item.role, "content": item.content} for item in payload.history]
+    search_query = payload.question
+    if history and len(payload.question.split()) <= 8:
+        prior_user = next((item["content"] for item in reversed(history) if item["role"] == "user"), "")
+        if prior_user:
+            search_query = f"{prior_user}\n{payload.question}"
+
+    context = retrieve_context(document.id, search_query, document.text)
+    result = AIService.answer_doubt(context, payload.question, history=history)
     return DoubtResponse(
         document_id=document.id,
         question=payload.question,
         answer=result.data,
+        history=payload.history,
+        **_meta_from_result(result),
+    )
+
+
+@router.post("/doubt/start", response_model=DoubtStartResponse)
+def start_doubt_session(payload: DoubtStartRequest) -> DoubtStartResponse:
+    document = _resolve_document(payload.document_id)
+    from ai_layer.vector_pipeline import retrieve_context
+
+    context = retrieve_context(document.id, "main concepts for a first tutoring question", document.text)
+    result = AIService.start_doubt_session(context)
+    return DoubtStartResponse(
+        document_id=document.id,
+        message=result.data,
         **_meta_from_result(result),
     )
 

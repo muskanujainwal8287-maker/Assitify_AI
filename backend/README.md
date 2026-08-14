@@ -43,9 +43,15 @@ When a user is logged in, documents are scoped to that user.
 - `DELETE /api/documents/{document_id}`
 - `GET /api/documents/{document_id}/summary`
 - `GET /api/documents/{document_id}/keypoints`
+- `GET /api/documents/{document_id}/topic-keypoints` — requires `topic`
+- `GET /api/documents/{document_id}/notes` — requires `chapter_id` (from GET .../chapters); optional `topic`
 - `POST /api/documents/{document_id}/questions`
 - `POST /api/documents/{document_id}/review`
-- `POST /api/documents/{document_id}/doubt`
+- `POST /api/documents/{document_id}/doubt` — chatbot turn (`question`, optional `session_id` to continue)
+- `POST /api/documents/{document_id}/doubt/sessions` — start a question-asking chat (tutor asks first)
+- `GET /api/documents/{document_id}/doubt/sessions` — list chats (creates one if none exist)
+- `GET /api/documents/{document_id}/doubt/sessions/{session_id}`
+- `DELETE /api/documents/{document_id}/doubt/sessions/{session_id}`
 - `GET /api/documents/{document_id}/chapters`
 - `GET /api/documents/{document_id}/chunks`
 - `GET /api/documents/{document_id}/attempts`
