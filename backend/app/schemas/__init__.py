@@ -93,7 +93,7 @@ class DocumentDetailResponse(BaseModel):
     created_at: datetime
     text_preview: str
     text_length: int
-    question_count: int = 0
+    question_attempted_count: int = 0
     attempt_count: int = 0
 
 

@@ -146,8 +146,11 @@ def get_document(
     user: User | None = None,
 ) -> DocumentDetailResponse:
     document = _get_document_or_404(db, document_id, user)
-    question_count = db.scalar(
-        select(func.count(Question.id)).where(Question.document_id == document.id)
+    question_attempted_count = db.scalar(
+        select(func.count(AttemptAnswer.id))
+        .select_from(AttemptAnswer)
+        .join(Attempt, AttemptAnswer.attempt_id == Attempt.id)
+        .where(Attempt.document_id == document.id)
     )
     attempt_count = db.scalar(
         select(func.count(Attempt.id)).where(Attempt.document_id == document.id)
@@ -159,7 +162,7 @@ def get_document(
         created_at=document.created_at,
         text_preview=document.text[:500],
         text_length=len(document.text),
-        question_count=int(question_count or 0),
+        question_attempted_count=int(question_attempted_count or 0),
         attempt_count=int(attempt_count or 0),
     )
 

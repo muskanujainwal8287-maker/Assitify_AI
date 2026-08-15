@@ -27,18 +27,39 @@ class AIClient:
         raise HTTPException(status_code=response.status_code, detail=detail)
 
     def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
-        try:
-            with httpx.Client(timeout=self.timeout) as client:
-                response = client.request(method, self._url(path), **kwargs)
-        except httpx.ConnectError as exc:
-            raise HTTPException(
-                status_code=503,
-                detail=f"AI layer unreachable at {self.base_url}. Start it with: python start.py ai",
-            ) from exc
-        except httpx.TimeoutException as exc:
-            raise HTTPException(status_code=504, detail="AI layer request timed out.") from exc
-        self._raise_for_status(response)
-        return response
+        # Retry once on transient transport failures (AI reload / connection reset).
+        last_exc: Exception | None = None
+        for attempt in range(2):
+            try:
+                with httpx.Client(timeout=self.timeout) as client:
+                    response = client.request(method, self._url(path), **kwargs)
+                self._raise_for_status(response)
+                return response
+            except httpx.ConnectError as exc:
+                last_exc = exc
+                if attempt == 0:
+                    continue
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"AI layer unreachable at {self.base_url}. Start it with: python start.py ai",
+                ) from exc
+            except httpx.TimeoutException as exc:
+                raise HTTPException(status_code=504, detail="AI layer request timed out.") from exc
+            except (httpx.ReadError, httpx.RemoteProtocolError, httpx.NetworkError) as exc:
+                last_exc = exc
+                if attempt == 0:
+                    continue
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "AI layer connection dropped while handling the request. "
+                        "Retry in a moment, or restart with: python start.py"
+                    ),
+                ) from exc
+        raise HTTPException(
+            status_code=503,
+            detail="AI layer request failed.",
+        ) from last_exc
 
     def health(self) -> dict[str, Any]:
         response = self._request("GET", "/health/ai", timeout=10.0)

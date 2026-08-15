@@ -41,12 +41,25 @@ export function DocumentWorkspace() {
   useEffect(() => {
     if (!documentId) return
     setLoading(true)
-    Promise.all([documentsApi.get(documentId), documentsApi.chapters(documentId)])
-      .then(([detail, chapterData]) => {
-        setDoc(detail)
-        setChapters(chapterData.chapters)
+    setError('')
+    Promise.allSettled([documentsApi.get(documentId), documentsApi.chapters(documentId)])
+      .then(([detailResult, chapterResult]) => {
+        if (detailResult.status === 'fulfilled') {
+          setDoc(detailResult.value)
+        } else {
+          setDoc(null)
+          setError(errorMessage(detailResult.reason))
+          return
+        }
+        if (chapterResult.status === 'fulfilled') {
+          setChapters(chapterResult.value.chapters)
+        } else {
+          setChapters([])
+          setError(
+            `Document loaded, but chapters could not be fetched: ${errorMessage(chapterResult.reason)}`,
+          )
+        }
       })
-      .catch((err) => setError(errorMessage(err)))
       .finally(() => setLoading(false))
   }, [documentId])
 
@@ -122,7 +135,7 @@ function OverviewPanel({
     <section className="space-y-5">
       <div className="grid gap-4 sm:grid-cols-3">
         <Stat label="Uploaded" value={formatDate(doc.created_at)} />
-        <Stat label="Questions generated" value={String(doc.question_count)} />
+        <Stat label="Questions Attempted" value={String(doc.question_attempted_count)} />
         <Stat label="Attempts" value={String(doc.attempt_count)} />
       </div>
       <div>

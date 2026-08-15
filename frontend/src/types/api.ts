@@ -57,7 +57,7 @@ export type DocumentDetailResponse = {
   created_at: string
   text_preview: string
   text_length: number
-  question_count: number
+  question_attempted_count: number
   attempt_count: number
 }
 
