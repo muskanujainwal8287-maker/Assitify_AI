@@ -19,6 +19,7 @@ import type {
   User,
   UserLoginRequest,
   UserRegisterRequest,
+  UserUpdateRequest,
   AnswerSubmission,
 } from '../types/api.ts'
 
@@ -104,6 +105,12 @@ export const authApi = {
   },
   me() {
     return request<User>('/api/auth/me')
+  },
+  updateMe(payload: UserUpdateRequest) {
+    return request<User>('/api/auth/me', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    })
   },
 }
 

@@ -136,7 +136,7 @@ function OverviewPanel({
       <div className="grid gap-4 sm:grid-cols-3">
         <Stat label="Uploaded" value={formatDate(doc.created_at)} />
         <Stat label="Questions Attempted" value={String(doc.question_attempted_count)} />
-        <Stat label="Attempts" value={String(doc.attempt_count)} />
+        <Stat label="Number of Attempts" value={String(doc.attempt_count)} />
       </div>
       <div>
         <h2 className="font-serif text-2xl">Preview</h2>

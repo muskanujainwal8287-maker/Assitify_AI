@@ -50,6 +50,17 @@ class UserLoginRequest(BaseModel):
         return self
 
 
+class UserUpdateRequest(BaseModel):
+    email: EmailStr
+    mobile_number: str = Field(min_length=10, max_length=16)
+    full_name: str = Field(default="", max_length=255)
+
+    @field_validator("mobile_number")
+    @classmethod
+    def validate_mobile_number(cls, value: str) -> str:
+        return normalize_mobile_number(value)
+
+
 class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -78,7 +89,7 @@ class DocumentListItem(BaseModel):
     filename: str
     detected_type: str
     created_at: datetime
-    question_count: int = 0
+    question_attempted_count: int = 0
 
 
 class DocumentListResponse(BaseModel):

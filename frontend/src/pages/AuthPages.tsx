@@ -124,7 +124,7 @@ export function LoginPage() {
             required
           />
           <Button type="submit" disabled={busy} className="w-full py-2.5 text-sm">
-            {busy ? 'Signing in…' : 'Log in'}
+            {busy ? 'Logging in…' : 'Log in'}
           </Button>
           <div className="flex items-center justify-between gap-4 text-base">
             <p className="text-muted">

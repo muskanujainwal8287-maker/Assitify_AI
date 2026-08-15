@@ -33,6 +33,7 @@ Open the student app at http://localhost:5173 (needs Node.js 20+).
 - `POST /api/auth/register` — `{ "email", "mobile_number", "password", "full_name?" }`
 - `POST /api/auth/login` — `{ "email" }` or `{ "mobile_number" }` plus `"password"`
 - `GET /api/auth/me` — requires `Authorization: Bearer <token>`
+- `PATCH /api/auth/me` — update `{ "email", "mobile_number", "full_name?" }`
 
 Set `AUTH_REQUIRED=true` in `.env` to force login for document APIs.
 When a user is logged in, documents are scoped to that user.

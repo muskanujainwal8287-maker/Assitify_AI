@@ -40,7 +40,7 @@ export function DocumentsPage() {
   async function onUpload(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!file && !text.trim()) {
-      setError('Choose a file or paste some text.')
+      setError('Choose a file or paste text before uploading.')
       return
     }
     setUploading(true)
@@ -132,8 +132,8 @@ export function DocumentsPage() {
                 <p className="text-xs uppercase tracking-wide text-muted2">{doc.detected_type}</p>
                 <h3 className="mt-1 font-serif text-xl">{doc.filename}</h3>
                 <p className="mt-2 text-sm text-muted2">
-                  {formatDate(doc.created_at)} · {doc.question_count} generated question
-                  {doc.question_count === 1 ? '' : 's'}
+                  {formatDate(doc.created_at)} · {doc.question_attempted_count} Attempted question
+                  {doc.question_attempted_count === 1 ? '' : 's'}
                 </p>
               </Link>
               <div className="mt-4 flex gap-2">

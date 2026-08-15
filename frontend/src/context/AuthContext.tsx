@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from 'react'
 import { TOKEN_KEY, USER_KEY, authApi } from '../lib/api.ts'
-import type { User, UserLoginRequest, UserRegisterRequest } from '../types/api.ts'
+import type { User, UserLoginRequest, UserRegisterRequest, UserUpdateRequest } from '../types/api.ts'
 
 type AuthContextValue = {
   token: string | null
@@ -16,6 +16,7 @@ type AuthContextValue = {
   ready: boolean
   login: (payload: UserLoginRequest) => Promise<void>
   register: (payload: UserRegisterRequest) => Promise<void>
+  updateProfile: (payload: UserUpdateRequest) => Promise<User>
   logout: () => void
 }
 
@@ -94,9 +95,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [applyAuth],
   )
 
+  const updateProfile = useCallback(async (payload: UserUpdateRequest) => {
+    const nextUser = await authApi.updateMe(payload)
+    localStorage.setItem(USER_KEY, JSON.stringify(nextUser))
+    setUser(nextUser)
+    return nextUser
+  }, [])
+
   const value = useMemo(
-    () => ({ token, user, ready, login, register, logout }),
-    [token, user, ready, login, register, logout],
+    () => ({ token, user, ready, login, register, updateProfile, logout }),
+    [token, user, ready, login, register, updateProfile, logout],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

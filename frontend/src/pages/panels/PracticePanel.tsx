@@ -46,7 +46,7 @@ export function PracticePanel({ documentId }: { documentId: string }) {
     if (!quiz) return
     const missing = quiz.questions.filter((question) => !answers[question.id]?.trim())
     if (missing.length > 0) {
-      setError('Answer every question before submitting.')
+      setError('Answering all questions is mandatory before submitting.')
       return
     }
     setBusy(true)
@@ -104,7 +104,7 @@ export function PracticePanel({ documentId }: { documentId: string }) {
             className={`${fieldClass} mt-1`}
             type="number"
             min={1}
-            max={20}
+            max={100}
             value={count}
             onChange={(event) => setCount(Number(event.target.value))}
           />

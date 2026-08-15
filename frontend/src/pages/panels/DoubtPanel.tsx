@@ -134,7 +134,7 @@ export function DoubtPanel({ documentId }: { documentId: string }) {
           </Button>
         </div>
         {sessions.length === 0 ? (
-          <p className="text-sm text-muted2">No tutoring chats yet.</p>
+          <p className="text-sm text-muted2">Zero Chats.</p>
         ) : (
           <ul className="space-y-1">
             {sessions.map((session) => (
@@ -164,7 +164,7 @@ export function DoubtPanel({ documentId }: { documentId: string }) {
         {!active ? (
           <div className="flex flex-1 items-center justify-center p-6">
             <EmptyState
-              title="Start a tutoring chat"
+              title="Start Doubt Session"
               body="The tutor asks first, then you can answer or raise a doubt about this document."
               action={
                 <Button onClick={startSession} disabled={busy}>
@@ -177,7 +177,7 @@ export function DoubtPanel({ documentId }: { documentId: string }) {
           <>
             <header className="flex items-center justify-between border-b border-line px-4 py-3">
               <div>
-                <p className="font-medium">{active.title || 'Tutoring chat'}</p>
+                <p className="font-medium">{active.title || 'Doubt Session'}</p>
                 <p className="text-xs text-muted2">Updated {formatDate(active.updated_at)}</p>
               </div>
               <Button variant="danger" onClick={() => removeSession(active.session_id)}>

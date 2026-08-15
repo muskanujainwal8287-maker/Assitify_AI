@@ -116,9 +116,10 @@ def list_documents(db: Session, user: User | None = None) -> DocumentListRespons
     query = (
         select(
             Document,
-            func.count(Question.id).label("question_count"),
+            func.count(AttemptAnswer.id).label("question_attempted_count"),
         )
-        .outerjoin(Question, Question.document_id == Document.id)
+        .outerjoin(Attempt, Attempt.document_id == Document.id)
+        .outerjoin(AttemptAnswer, AttemptAnswer.attempt_id == Attempt.id)
         .group_by(Document.id)
         .order_by(Document.created_at.desc())
     )
@@ -133,9 +134,9 @@ def list_documents(db: Session, user: User | None = None) -> DocumentListRespons
             filename=doc.filename,
             detected_type=doc.detected_type,
             created_at=doc.created_at,
-            question_count=int(count or 0),
+            question_attempted_count=int(attempted or 0),
         )
-        for doc, count in rows
+        for doc, attempted in rows
     ]
     return DocumentListResponse(documents=items, total=len(items))
 

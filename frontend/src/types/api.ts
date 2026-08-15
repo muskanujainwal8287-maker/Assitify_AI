@@ -30,12 +30,18 @@ export type UserLoginRequest = {
   password: string
 }
 
+export type UserUpdateRequest = {
+  email: string
+  mobile_number: string
+  full_name?: string
+}
+
 export type DocumentListItem = {
   document_id: string
   filename: string
   detected_type: string
   created_at: string
-  question_count: number
+  question_attempted_count: number
 }
 
 export type DocumentListResponse = {

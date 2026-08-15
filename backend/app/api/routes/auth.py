@@ -14,7 +14,13 @@ from backend.app.core.security import (
 )
 from backend.app.db.models import User
 from backend.app.db.session import get_db
-from backend.app.schemas import AuthTokenResponse, UserLoginRequest, UserOut, UserRegisterRequest
+from backend.app.schemas import (
+    AuthTokenResponse,
+    UserLoginRequest,
+    UserOut,
+    UserRegisterRequest,
+    UserUpdateRequest,
+)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 logger = logging.getLogger(__name__)
@@ -68,4 +74,32 @@ def login(payload: UserLoginRequest, db: Session = Depends(get_db)) -> AuthToken
     description=("JWT required."),
 )
 def me(user: User = Depends(get_current_user)) -> UserOut:
+    return UserOut.model_validate(user)
+
+
+@router.patch(
+    "/me",
+    response_model=UserOut,
+    summary="Update current user",
+    description="JWT required. Update full name, email, and mobile number.",
+)
+def update_me(
+    payload: UserUpdateRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> UserOut:
+    email = payload.email.lower().strip()
+    existing_email = get_user_by_email(db, email)
+    if existing_email and existing_email.id != user.id:
+        raise HTTPException(status_code=400, detail="Email already registered.")
+    existing_mobile = get_user_by_mobile(db, payload.mobile_number)
+    if existing_mobile and existing_mobile.id != user.id:
+        raise HTTPException(status_code=400, detail="Mobile number already registered.")
+
+    user.email = email
+    user.mobile_number = payload.mobile_number
+    user.full_name = payload.full_name.strip()
+    db.add(user)
+    db.commit()
+    db.refresh(user)
     return UserOut.model_validate(user)
