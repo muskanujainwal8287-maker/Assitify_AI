@@ -6,7 +6,7 @@ End-to-end project for exam preparation with three layers:
 
 - **AI layer** (`ai_layer` in this repo): document parsing, summaries, questions, answer review, doubt handling
 - **Backend** (FastAPI): upload, parsing, generation, scoring APIs (`backend/`)
-- **Frontend** (React + Vite): student workflow (`frontend/`)
+- **Frontend** (React + TypeScript + Vite): Aspirant workflow (`frontend/`)
 
 The sections below describe the **AI layer** service and its HTTP API.
 
@@ -14,6 +14,28 @@ The sections below describe the **AI layer** service and its HTTP API.
 
 Use `Python 3.12.x` for this project.
 `PyMuPDF` may fail to install on Windows with `Python 3.14` because pip may fall back to source builds.
+
+## Frontend
+
+The student app is `frontend/` (React + TypeScript + Vite + Tailwind). It calls the backend on `:8001`.
+
+Requires **Node.js 20+**. If `node` is not in your PATH, install the LTS build from [nodejs.org](https://nodejs.org/).
+
+```bash
+docker compose up -d
+python start.py
+```
+
+`python start.py` launches AI (`:8000`), backend (`:8001`), and Vite (`:5173`).  
+If `frontend/node_modules` is missing, it runs `npm install` first.
+
+Open http://localhost:5173. Vite proxies `/api` to `http://127.0.0.1:8001`.
+
+```bash
+python start.py ai         # AI only
+python start.py backend    # Backend only
+python start.py frontend   # Vite only
+```
 
 ## What it provides
 
@@ -33,7 +55,7 @@ The AI layer supports:
 Elsewhere in the repo:
 
 - `backend/` — `app/routes/`, `app/services/`, `app/schemas/`
-- `frontend/` — `src/App.jsx`, `src/services/api.js`
+- `frontend/` — React + TypeScript app (`src/App.tsx`, `src/lib/api.ts`)
 
 ## Folder structure
 
@@ -56,7 +78,8 @@ Elsewhere in the repo:
 - `ai_layer/config.py`
   - Environment-backed settings (upload dir, OpenAI key, model, etc.).
 - `start.py`
-  - Launcher for AI (`:8000`) and/or Backend (`:8001`): `python start.py` | `python start.py ai` | `python start.py backend`.
+  - Launcher for AI (`:8000`), Backend (`:8001`), and Frontend/Vite (`:5173`):
+    `python start.py` | `python start.py ai` | `python start.py backend` | `python start.py frontend`.
 
 ## Dependencies
 

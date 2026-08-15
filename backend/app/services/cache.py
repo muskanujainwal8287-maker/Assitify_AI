@@ -68,6 +68,16 @@ def set_json(key: str, value: Any, ttl_seconds: int = _DEFAULT_TTL_SECONDS) -> N
         logger.warning("Redis set failed for %s: %s", key, exc)
 
 
+def delete_key(key: str) -> None:
+    client = _get_client()
+    if client is None:
+        return
+    try:
+        client.delete(key)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Redis delete failed for %s: %s", key, exc)
+
+
 def summary_key(document_id: str) -> str:
     return _SUMMARY_PREFIX + document_id
 

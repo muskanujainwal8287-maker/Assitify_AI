@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -12,9 +14,10 @@ from backend.app.core.security import (
 )
 from backend.app.db.models import User
 from backend.app.db.session import get_db
-from backend.app.schemas import AuthTokenResponse, UserLoginRequest, UserRegisterRequest, UserOut
+from backend.app.schemas import AuthTokenResponse, UserLoginRequest, UserOut, UserRegisterRequest
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
 
 
 def _token_response(user: User) -> AuthTokenResponse:
@@ -62,9 +65,7 @@ def login(payload: UserLoginRequest, db: Session = Depends(get_db)) -> AuthToken
     "/me",
     response_model=UserOut,
     summary="Current user",
-    description=(
-        "JWT required."
-    ),
+    description=("JWT required."),
 )
 def me(user: User = Depends(get_current_user)) -> UserOut:
     return UserOut.model_validate(user)

@@ -20,10 +20,13 @@ alembic upgrade head
 4. Start services:
 
 ```bash
-python start.py            # AI (:8000) + Backend (:8001)
+python start.py            # AI (:8000) + Backend (:8001) + Vite (:5173)
 python start.py ai         # AI only
 python start.py backend    # Backend only
+python start.py frontend   # Vite frontend only
 ```
+
+Open the student app at http://localhost:5173 (needs Node.js 20+).
 
 ## Auth
 

@@ -1,0 +1,35 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --color-ink: #0f2744;
+  --color-paper: #d1e4f3;
+  --color-card: #e6eff5;
+  --color-line: #b7cddc;
+  --color-muted: #d1e4f3;
+  --color-copper: #c45c26;
+  --color-copper-dark: #9a4318;
+  --color-forest: #0a1f44;
+  --color-forest-soft: #163a66;
+  --color-good: #2f6b45;
+  --color-bad: #b42318;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+#root {
+  min-height: 100svh;
+}

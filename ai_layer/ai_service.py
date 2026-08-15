@@ -546,12 +546,12 @@ class AIService:
     def start_doubt_session(text: str) -> LLMResult[str]:
         prepared_content = AIService._prepare_content_for_prompt(text)
         prompt = (
-            "You are starting a question-asking tutoring session for exam prep.\n"
-            "Using only the provided content, write a short tutor opening message that:\n"
-            "1) greets the student in one sentence,\n"
-            "2) names the main topic of the material,\n"
-            "3) asks ONE clear question the student should answer first.\n"
-            "Do not answer the question yourself. Do not invent facts.\n\n"
+            "You are starting a question-asking tutoring session for exam preperation.\n"
+            "Using only the provided content, write a short tutor opening message:greets(Hey!! Hello!!) and asks the student if they are getting stuck or have doubts regarding to the provided content \n"
+            "Do not teach, explain, or answer anything without asking. Do not invent facts or hallucinate.\n"
+            "Only ask questions and do not answer them yourself.\n"
+            "Only answer to the doubts from the provided content and do not hallucinate or make up facts.\n"
+            "Keep the whole message crisp ,consice and to the point.\n\n"
             f"Content:\n{prepared_content}"
         )
         output_text, error = call_llm(prompt)
