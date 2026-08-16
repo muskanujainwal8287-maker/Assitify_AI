@@ -1,6 +1,7 @@
 import { useState, type InputHTMLAttributes, type SubmitEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.tsx'
+import { authApi } from '../lib/api.ts'
 import { errorMessage } from '../lib/format.ts'
 import { Button, ErrorBanner, Wordmark, fieldClass } from '../components/ui.tsx'
 
@@ -133,7 +134,9 @@ export function LoginPage() {
                 Create an account
               </Link>
             </p>
-            <span className="shrink-0 text-forest">Forgot password?</span>
+            <Link to="/forgot-password" className="shrink-0 text-forest hover:underline">
+              Forgot password?
+            </Link>
           </div>
         </form>
       </main>
@@ -228,6 +231,279 @@ export function RegisterPage() {
             Already have an account?{' '}
             <Link to="/login" className="text-forest hover:underline">
               Log in
+            </Link>
+          </p>
+        </form>
+      </main>
+    </div>
+  )
+}
+
+export function ForgotPasswordPage() {
+  const navigate = useNavigate()
+  const [identifier, setIdentifier] = useState('')
+  const [otp, setOtp] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [channel, setChannel] = useState<'email' | 'sms' | null>(null)
+  const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const mobileForReset = identifier.trim().includes('@')
+    ? ''
+    : identifier.trim().replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '')
+
+  async function onRequestCode(event: SubmitEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError('')
+    setMessage('')
+    setBusy(true)
+    const trimmed = identifier.trim()
+    const payload = trimmed.includes('@') ? { email: trimmed } : { mobile_number: trimmed }
+    try {
+      const result = await authApi.forgotPassword(payload)
+      setMessage(result.message)
+      setChannel(result.channel)
+    } catch (err) {
+      setError(errorMessage(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function onResetWithOtp(event: SubmitEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError('')
+    if (password !== confirm) {
+      setError('Passwords do not match.')
+      return
+    }
+    setBusy(true)
+    try {
+      await authApi.resetPassword({
+        mobile_number: mobileForReset,
+        otp: otp.trim(),
+        new_password: password,
+      })
+      navigate('/login', { replace: true })
+    } catch (err) {
+      setError(errorMessage(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (channel === 'sms') {
+    return (
+      <div className="grid min-h-svh lg:grid-cols-2">
+        <AuthHero />
+        <main className="flex items-start justify-start bg-[#779ebd] px-8 pt-20 pb-10">
+          <form onSubmit={onResetWithOtp} className="w-full max-w-lg space-y-6">
+            <div className="lg:hidden">
+              <Wordmark to="/login" variant="auth" />
+            </div>
+            <div>
+              <h1 className="font-serif text-6xl">Enter OTP</h1>
+              <p className="mt-5 text-base text-muted">
+                {message || 'Enter the code sent to your mobile number, then create a new password.'}
+              </p>
+            </div>
+            {error ? <ErrorBanner message={error} /> : null}
+            <label className="block text-base">
+              One-time code
+              <input
+                className={authFieldClass}
+                value={otp}
+                onChange={(event) => setOtp(event.target.value)}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                minLength={4}
+                maxLength={8}
+                required
+              />
+            </label>
+            <PasswordField
+              label="New password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="new-password"
+              minLength={6}
+              required
+            />
+            <PasswordField
+              label="Confirm password"
+              value={confirm}
+              onChange={(event) => setConfirm(event.target.value)}
+              autoComplete="new-password"
+              minLength={6}
+              required
+            />
+            <Button type="submit" disabled={busy} className="w-full py-2.5 text-sm">
+              {busy ? 'Updating…' : 'Update password'}
+            </Button>
+            <div className="flex items-center justify-between gap-4 text-base">
+              <button
+                type="button"
+                className="text-forest hover:underline"
+                onClick={() => {
+                  setChannel(null)
+                  setMessage('')
+                  setOtp('')
+                  setPassword('')
+                  setConfirm('')
+                  setError('')
+                }}
+              >
+                Use a different number
+              </button>
+              <Link to="/login" className="shrink-0 text-forest hover:underline">
+                Back to log in
+              </Link>
+            </div>
+          </form>
+        </main>
+      </div>
+    )
+  }
+
+  return (
+    <div className="grid min-h-svh lg:grid-cols-2">
+      <AuthHero />
+      <main className="flex items-start justify-start bg-[#779ebd] px-8 pt-20 pb-10">
+        <form onSubmit={onRequestCode} className="w-full max-w-lg space-y-6">
+          <div className="lg:hidden">
+            <Wordmark to="/login" variant="auth" />
+          </div>
+          <div>
+            <h1 className="font-serif text-6xl">Forgot password</h1>
+            <p className="mt-5 text-base text-muted">
+              Enter your email for a reset link, or mobile number for an OTP.
+            </p>
+          </div>
+          {error ? <ErrorBanner message={error} /> : null}
+          {message && channel === 'email' ? (
+            <p className="rounded-md border border-forest/20 bg-white/40 px-4 py-3 text-base text-ink">
+              {message}
+            </p>
+          ) : null}
+          <label className="block text-base">
+            Email or Mobile Number
+            <input
+              className={authFieldClass}
+              value={identifier}
+              onChange={(event) => setIdentifier(event.target.value)}
+              autoComplete="username"
+              required
+              disabled={Boolean(message) && channel === 'email'}
+            />
+          </label>
+          <Button
+            type="submit"
+            disabled={busy || (Boolean(message) && channel === 'email')}
+            className="w-full py-2.5 text-sm"
+          >
+            {busy ? 'Sending…' : 'Send reset instructions'}
+          </Button>
+          <p className="text-base text-muted">
+            Remembered it?{' '}
+            <Link to="/login" className="text-forest hover:underline">
+              Back to log in
+            </Link>
+            {message && channel === 'email' ? (
+              <>
+                {' · '}
+                <button
+                  type="button"
+                  className="text-forest hover:underline"
+                  onClick={() => navigate('/login')}
+                >
+                  Continue
+                </button>
+              </>
+            ) : null}
+          </p>
+        </form>
+      </main>
+    </div>
+  )
+}
+
+export function ResetPasswordPage() {
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const token = searchParams.get('token')?.trim() ?? ''
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function onSubmit(event: SubmitEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError('')
+    if (!token) {
+      setError('Missing reset token. Request a new link from the forgot password page.')
+      return
+    }
+    if (password !== confirm) {
+      setError('Passwords do not match.')
+      return
+    }
+    setBusy(true)
+    try {
+      await authApi.resetPassword({ token, new_password: password })
+      navigate('/login', { replace: true })
+    } catch (err) {
+      setError(errorMessage(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="grid min-h-svh lg:grid-cols-2">
+      <AuthHero />
+      <main className="flex items-start justify-start bg-[#779ebd] px-8 pt-20 pb-10">
+        <form onSubmit={onSubmit} className="w-full max-w-lg space-y-6">
+          <div className="lg:hidden">
+            <Wordmark to="/login" variant="auth" />
+          </div>
+          <div>
+            <h1 className="font-serif text-6xl">Reset password</h1>
+            <p className="mt-5 text-base text-muted">Choose a new password for your account.</p>
+          </div>
+          {error ? <ErrorBanner message={error} /> : null}
+          {!token ? (
+            <ErrorBanner message="This reset link is missing a token. Request a new one." />
+          ) : null}
+          <PasswordField
+            label="New password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            autoComplete="new-password"
+            minLength={6}
+            required
+            disabled={!token}
+          />
+          <PasswordField
+            label="Confirm password"
+            value={confirm}
+            onChange={(event) => setConfirm(event.target.value)}
+            autoComplete="new-password"
+            minLength={6}
+            required
+            disabled={!token}
+          />
+          <Button type="submit" disabled={busy || !token} className="w-full py-2.5 text-sm">
+            {busy ? 'Updating…' : 'Update password'}
+          </Button>
+          <p className="text-base text-muted">
+            <Link to="/forgot-password" className="text-forest hover:underline">
+              Request a new link
+            </Link>
+            {' · '}
+            <Link to="/login" className="text-forest hover:underline">
+              Back to log in
             </Link>
           </p>
         </form>

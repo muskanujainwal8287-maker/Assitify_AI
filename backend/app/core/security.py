@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from uuid import UUID
@@ -30,6 +32,19 @@ def hash_password(password: str) -> str:
 
 def verify_password(password: str, password_hash: str) -> bool:
     return pwd_context.verify(password, password_hash)
+
+
+def create_reset_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def create_otp(*, digits: int = 6) -> str:
+    upper = 10**digits
+    return f"{secrets.randbelow(upper):0{digits}d}"
+
+
+def hash_reset_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def create_access_token(*, user_id: UUID, email: str, mobile_number: str) -> str:

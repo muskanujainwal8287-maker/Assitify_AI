@@ -7,8 +7,11 @@ from fastapi import HTTPException
 from backend.app.core.config import settings
 from backend.app.core.security import (
     create_access_token,
+    create_otp,
+    create_reset_token,
     decode_access_token,
     hash_password,
+    hash_reset_token,
     verify_password,
 )
 
@@ -18,6 +21,20 @@ def test_password_hash_roundtrip() -> None:
     assert hashed != "my-password"
     assert verify_password("my-password", hashed) is True
     assert verify_password("wrong", hashed) is False
+
+
+def test_reset_token_hash_is_stable_and_not_raw() -> None:
+    raw = create_reset_token()
+    hashed = hash_reset_token(raw)
+    assert hashed != raw
+    assert hash_reset_token(raw) == hashed
+    assert len(raw) >= 32
+
+
+def test_otp_is_six_digits() -> None:
+    otp = create_otp()
+    assert len(otp) == 6
+    assert otp.isdigit()
 
 
 def test_access_token_roundtrip() -> None:

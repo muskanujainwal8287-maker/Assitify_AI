@@ -61,6 +61,55 @@ class UserUpdateRequest(BaseModel):
         return normalize_mobile_number(value)
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr | None = None
+    mobile_number: str | None = None
+
+    @field_validator("mobile_number")
+    @classmethod
+    def validate_forgot_mobile(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        return normalize_mobile_number(value)
+
+    @model_validator(mode="after")
+    def require_email_or_mobile(self) -> "ForgotPasswordRequest":
+        if not self.email and not self.mobile_number:
+            raise ValueError("Provide email or mobile_number.")
+        return self
+
+
+class ForgotPasswordResponse(BaseModel):
+    message: str
+    channel: Literal["email", "sms"]
+
+
+class ResetPasswordRequest(BaseModel):
+    new_password: str = Field(min_length=6, max_length=128)
+    token: str | None = Field(default=None, min_length=8, max_length=128)
+    mobile_number: str | None = None
+    otp: str | None = Field(default=None, min_length=4, max_length=8)
+
+    @field_validator("mobile_number")
+    @classmethod
+    def validate_reset_mobile(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        return normalize_mobile_number(value)
+
+    @model_validator(mode="after")
+    def require_token_or_otp(self) -> "ResetPasswordRequest":
+        if self.token:
+            return self
+        if self.mobile_number and self.otp:
+            return self
+        raise ValueError("Provide token, or mobile_number with otp.")
+
+
+class MessageResponse(BaseModel):
+    message: str
+
+
 class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -16,6 +16,8 @@ _PUBLIC_PATHS = {
     "/health",
     "/api/auth/login",
     "/api/auth/register",
+    "/api/auth/forgot-password",
+    "/api/auth/reset-password",
 }
 
 app = FastAPI(

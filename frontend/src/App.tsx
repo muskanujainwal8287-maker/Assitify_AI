@@ -1,7 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext.tsx'
 import { GuestRoute, ProtectedRoute } from './components/ProtectedRoute.tsx'
-import { LoginPage, RegisterPage } from './pages/AuthPages.tsx'
+import { LoginPage, RegisterPage, ForgotPasswordPage, ResetPasswordPage } from './pages/AuthPages.tsx'
 import { DocumentsPage } from './pages/DocumentsPage.tsx'
 import { DocumentWorkspace } from './pages/DocumentWorkspace.tsx'
 import { ProfilePage } from './pages/ProfilePage.tsx'
@@ -24,6 +24,22 @@ export default function App() {
             element={
               <GuestRoute>
                 <RegisterPage />
+              </GuestRoute>
+            }
+          />
+          <Route
+            path="/forgot-password"
+            element={
+              <GuestRoute>
+                <ForgotPasswordPage />
+              </GuestRoute>
+            }
+          />
+          <Route
+            path="/reset-password"
+            element={
+              <GuestRoute>
+                <ResetPasswordPage />
               </GuestRoute>
             }
           />

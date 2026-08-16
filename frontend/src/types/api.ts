@@ -36,6 +36,27 @@ export type UserUpdateRequest = {
   full_name?: string
 }
 
+export type ForgotPasswordRequest = {
+  email?: string
+  mobile_number?: string
+}
+
+export type ForgotPasswordResponse = {
+  message: string
+  channel: 'email' | 'sms'
+}
+
+export type ResetPasswordRequest = {
+  new_password: string
+  token?: string
+  mobile_number?: string
+  otp?: string
+}
+
+export type MessageResponse = {
+  message: string
+}
+
 export type DocumentListItem = {
   document_id: string
   filename: string

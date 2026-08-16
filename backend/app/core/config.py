@@ -20,6 +20,21 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 60 * 24 * 7
     auth_required: bool = True
     frontend_url: str = "http://localhost:5173"
+    password_reset_expire_minutes: int = 15
+    password_reset_rate_limit: int = 3
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = "noreply@assistify.local"
+    smtp_use_tls: bool = True
+    # SMS: leave sms_provider empty to log OTP locally. Supported: "fast2sms", "twilio"
+    sms_provider: str = ""
+    sms_api_key: str = ""
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_from_number: str = ""
+    twilio_verify_service_sid: str = ""
 
     model_config = SettingsConfigDict(
         env_file=str(_ENV_FILE),

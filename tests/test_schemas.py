@@ -3,7 +3,9 @@ from pydantic import ValidationError
 
 from backend.app.schemas import (
     DoubtRequest,
+    ForgotPasswordRequest,
     QuestionGenerationRequest,
+    ResetPasswordRequest,
     UserLoginRequest,
     UserRegisterRequest,
     normalize_mobile_number,
@@ -41,6 +43,37 @@ def test_login_accepts_mobile_only() -> None:
     payload = UserLoginRequest(mobile_number="9876543210", password="secret1")
     assert payload.email is None
     assert payload.mobile_number == "9876543210"
+
+
+def test_forgot_password_requires_email_or_mobile() -> None:
+    with pytest.raises(ValidationError):
+        ForgotPasswordRequest()
+
+
+def test_forgot_password_accepts_email() -> None:
+    payload = ForgotPasswordRequest(email="user@example.com")
+    assert payload.mobile_number is None
+
+
+def test_reset_password_min_length() -> None:
+    with pytest.raises(ValidationError):
+        ResetPasswordRequest(token="shorttok", new_password="123")
+    ok = ResetPasswordRequest(token="a-valid-reset-token", new_password="secret1")
+    assert ok.new_password == "secret1"
+
+
+def test_reset_password_accepts_otp() -> None:
+    payload = ResetPasswordRequest(
+        mobile_number="9876543210",
+        otp="123456",
+        new_password="secret1",
+    )
+    assert payload.token is None
+
+
+def test_reset_password_requires_token_or_otp() -> None:
+    with pytest.raises(ValidationError):
+        ResetPasswordRequest(new_password="secret1")
 
 
 def test_doubt_request_min_length() -> None:

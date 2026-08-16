@@ -78,6 +78,58 @@ def delete_key(key: str) -> None:
         logger.warning("Redis delete failed for %s: %s", key, exc)
 
 
+def set_string(key: str, value: str, ttl_seconds: int) -> bool:
+    client = _get_client()
+    if client is None:
+        return False
+    try:
+        client.set(key, value, ex=ttl_seconds)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Redis set_string failed for %s: %s", key, exc)
+        return False
+
+
+def get_string(key: str) -> str | None:
+    client = _get_client()
+    if client is None:
+        return None
+    try:
+        value = client.get(key)
+        return str(value) if value is not None else None
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Redis get_string failed for %s: %s", key, exc)
+        return None
+
+
+def getdel_string(key: str) -> str | None:
+    """Atomically get and delete a string value."""
+    client = _get_client()
+    if client is None:
+        return None
+    try:
+        value = client.getdel(key)
+        return str(value) if value is not None else None
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Redis getdel failed for %s: %s", key, exc)
+        return None
+
+
+def incr_with_expire(key: str, ttl_seconds: int) -> int | None:
+    """Atomically increment a counter and set TTL on first write. None if Redis down."""
+    client = _get_client()
+    if client is None:
+        return None
+    try:
+        count = int(client.incr(key))
+        if count == 1:
+            client.expire(key, ttl_seconds)
+        return count
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Redis incr failed for %s: %s", key, exc)
+        return None
+
+
 def summary_key(document_id: str) -> str:
     return _SUMMARY_PREFIX + document_id
 

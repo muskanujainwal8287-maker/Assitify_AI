@@ -32,8 +32,16 @@ Open the student app at http://localhost:5173 (needs Node.js 20+).
 
 - `POST /api/auth/register` — `{ "email", "mobile_number", "password", "full_name?" }`
 - `POST /api/auth/login` — `{ "email" }` or `{ "mobile_number" }` plus `"password"`
+- `POST /api/auth/forgot-password` — `{ "email" }` sends a reset link; `{ "mobile_number" }` sends an OTP. Response includes `channel` (`email` | `sms`).
+- `POST /api/auth/reset-password` — `{ "token", "new_password" }` for email links, or `{ "mobile_number", "otp", "new_password" }` for SMS OTP
 - `GET /api/auth/me` — requires `Authorization: Bearer <token>`
 - `PATCH /api/auth/me` — update `{ "email", "mobile_number", "full_name?" }`
+
+Password reset emails are sent when `SMTP_HOST` is set. Without SMTP, the backend logs the reset link (useful for local development).
+
+SMS OTP is sent when `SMS_PROVIDER` is set (`fast2sms` or `twilio`).
+For Twilio **trial** accounts, set `TWILIO_VERIFY_SERVICE_SID` (Verify API) — free-form SMS bodies are blocked (error 572006).
+Without a provider, the backend logs the OTP. Tokens/OTPs expire after `PASSWORD_RESET_EXPIRE_MINUTES` (default 15) and are single-use.
 
 Set `AUTH_REQUIRED=true` in `.env` to force login for document APIs.
 When a user is logged in, documents are scoped to that user.

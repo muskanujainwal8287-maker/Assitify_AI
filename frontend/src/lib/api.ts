@@ -9,10 +9,14 @@ import type {
   DoubtResponse,
   DoubtSessionDetailResponse,
   DoubtSessionListResponse,
+  ForgotPasswordRequest,
+  ForgotPasswordResponse,
   KeyPointsResponse,
+  MessageResponse,
   NotesResponse,
   QuestionGenerationRequest,
   QuestionGenerationResponse,
+  ResetPasswordRequest,
   SummaryResponse,
   TestReviewResponse,
   TopicKeyPointsResponse,
@@ -77,7 +81,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
 
   const response = await fetch(`${API_BASE}${path}`, { ...init, headers })
-  const isAuthForm = path === '/api/auth/login' || path === '/api/auth/register'
+  const isAuthForm =
+    path === '/api/auth/login' ||
+    path === '/api/auth/register' ||
+    path === '/api/auth/forgot-password' ||
+    path === '/api/auth/reset-password'
   if (response.status === 401 && token && !isAuthForm) {
     window.dispatchEvent(new Event('assitify:unauthorized'))
   }
@@ -99,6 +107,18 @@ export const authApi = {
   },
   register(payload: UserRegisterRequest) {
     return request<AuthTokenResponse>('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  },
+  forgotPassword(payload: ForgotPasswordRequest) {
+    return request<ForgotPasswordResponse>('/api/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  },
+  resetPassword(payload: ResetPasswordRequest) {
+    return request<MessageResponse>('/api/auth/reset-password', {
       method: 'POST',
       body: JSON.stringify(payload),
     })

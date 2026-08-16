@@ -104,6 +104,9 @@ def _patch_auth_lookups(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture
 def auth_client(memory_db: InMemoryDB, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     """Auth routes with real JWT validation against in-memory users."""
+    from backend.app.services import cache as cache_service
+    from backend.app.services import password_reset as password_reset_service
+
     app = FastAPI()
     app.include_router(auth_routes.router)
 
@@ -112,6 +115,8 @@ def auth_client(memory_db: InMemoryDB, monkeypatch: pytest.MonkeyPatch) -> TestC
 
     app.dependency_overrides[get_db] = override_get_db
     _patch_auth_lookups(monkeypatch)
+    monkeypatch.setattr(cache_service, "_get_client", lambda: None)
+    password_reset_service.clear_memory_store()
     return TestClient(app)
 
 
